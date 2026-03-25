@@ -20,6 +20,8 @@ from file_io.logger import FileLogger
 from functionals.operators import laplacian, gradient
 from functionals.integrals import domain_integral, boundary_integral
 
+from networks.ntk_utils import plot_ntk_and_freq
+
 class Trainer:
     def __init__(
         self,
@@ -48,7 +50,6 @@ class Trainer:
             min_lr=1e-6
         )
 
-        # Инициализация Evaluator (передаем имя домена для графиков)
         domain_name = getattr(domain, 'name', 'Domain')
         self.evaluator = Evaluator(
             pinn=self.pinn,
@@ -144,6 +145,9 @@ class Trainer:
                     save_path = os.path.join(OUTPUT_DIR, f"{self.evaluator.domain_name}_best_pinn.pth")
                     os.makedirs(OUTPUT_DIR, exist_ok=True)
                     torch.save(self.pinn.state_dict(), save_path)
-                    self.logger(f"  [Model Saved] New best energy error: E={best_e:.4e}")
+                    self.logger(f"  [Model Saved] New best loss:{best_e:.4e}")
+
+            if ep == 1 or ep % 100 == 0:
+                plot_ntk_and_freq(self.pinn, ep)
 
         callback.on_phase_end()
