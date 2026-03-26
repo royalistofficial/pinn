@@ -22,7 +22,7 @@ class PINN(nn.Module):
             print(
                 f"[{self.__class__.__name__}] {total_params:,} trainable params | "
             )
-            
+
         else:
             self.model = FourierNet(
                 out_dim=1,

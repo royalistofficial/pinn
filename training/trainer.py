@@ -10,9 +10,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from config import (
     DEVICE, DEFAULT_LR, TRAIN_EPOCHS, BC_PENALTY, LOSS_TYPE, OUTPUT_DIR,
     USE_ADAPTIVE_FREQ, ADAPTIVE_FREQ_POINTS,
-    NTK_ANALYSIS_EVERY, NTK_ANALYSIS_POINTS, NTK_NODE_ORDER,
-    USE_NTK_WEIGHTS, NTK_WEIGHT_EVERY, NTK_WEIGHT_POINTS, NTK_WEIGHT_MOMENTUM,
-    USE_CORNER_WEIGHTING, CORNER_WEIGHT_BETA,
+    NTK_ANALYSIS_EVERY, NTK_ANALYSIS_POINTS, NTK_NODE_ORDER, USE_CORNER
 )
 from geometry.domains import BaseDomain
 from geometry.quadrature import QuadratureData
@@ -70,7 +68,10 @@ class Trainer:
                 logger(f"  [AdaptiveFreq] Ошибка: {e}, используем стандартные")
                 init_freqs = None
 
-        corner_enrichment = build_corner_enrichment(domain, DEVICE)
+        if USE_CORNER:
+            corner_enrichment = build_corner_enrichment(domain, DEVICE)
+        else:
+            corner_enrichment = None
         self.pinn = PINN(
             corner_enrichment=corner_enrichment,
             init_freqs=init_freqs,
@@ -79,7 +80,7 @@ class Trainer:
         self.opt_pinn = torch.optim.Adam(self.pinn.parameters(), lr=lr)
         self.scheduler = ReduceLROnPlateau(
             self.opt_pinn, mode="min", factor=0.5,
-            patience=50, min_lr=1e-6,
+            patience=50, threshold=1e-4, min_lr=1e-5,
         )
 
         domain_name = getattr(domain, "name", "Domain")
@@ -92,26 +93,12 @@ class Trainer:
         self._ntk_history: list[dict] = []
         self._ntk_epochs:  list[int]  = []
 
-        self._lambda_r = 1.0   
-        self._lambda_b = 1.0   
-
-        self._corner_pde_weights: torch.Tensor | None = None
-        if USE_CORNER_WEIGHTING:
-            self._corner_pde_weights = _compute_corner_weights(
-                self.data.sample.quad.xy_in,
-                domain,
-                beta=CORNER_WEIGHT_BETA,
-            )
-            logger(f"  [CornerWeight] β={CORNER_WEIGHT_BETA}, "
-                   f"min_w={self._corner_pde_weights.min().item():.3f}, "
-                   f"max_w={self._corner_pde_weights.max().item():.3f}")
-
     def train(self) -> None:
         self.logger.section(
             f"Training PINN  (Loss: {LOSS_TYPE},  Epochs: {TRAIN_EPOCHS},  "
             f"AdaptiveFreq: {USE_ADAPTIVE_FREQ})"
         )
-        
+
         self._run_ntk_analysis(0)
 
         best_loss = float("inf")
@@ -145,19 +132,11 @@ class Trainer:
 
                 if LOSS_TYPE == "mse":
 
-                    if self._corner_pde_weights is not None:
-
-                        w_corner = self._corner_pde_weights[idx_in].to(DEVICE)
-                        loss_pde = (residual.pow(2) * w_corner.unsqueeze(-1)).mean()
-                    else:
-                        loss_pde = residual.pow(2).mean()
-
-                    loss_pde = loss_pde * self._lambda_r
+                    loss_pde = residual.pow(2).mean()
 
                     mask_sum = bc_mask.sum()
                     loss_dir = (diff_D ** 2 * bc_mask).sum() / (mask_sum + 1e-8)
 
-                    loss_dir = loss_dir * self._lambda_b
                     if self.has_neumann:
                         grad_v_bd = gradient(v_bd, xb)
                         v_n = (grad_v_bd * normals).sum(dim=1, keepdim=True)
@@ -291,30 +270,3 @@ def _norm_entropy(eig: np.ndarray) -> np.ndarray:
         return np.array([0.0])
     p = ep / ep.sum()
     return p * np.log(p + 1e-30)
-
-def _compute_corner_weights(
-        xy_in: torch.Tensor,
-        domain,
-        beta: float = 0.4,
-    ) -> torch.Tensor:
-    from networks.corners import extract_corners
-
-    corners, angles = extract_corners(domain)
-    if corners.shape[0] == 0 or beta < 1e-6:
-
-        return torch.ones(len(xy_in), dtype=torch.float32, device=xy_in.device)
-
-    xy_np = xy_in.detach().cpu().numpy()        
-    c_np  = corners.numpy()                      
-
-    dists = np.full(len(xy_np), np.inf)
-    for c in c_np:
-        d = np.linalg.norm(xy_np - c[None, :], axis=1)
-        dists = np.minimum(dists, d)
-
-    dists = np.clip(dists, 1e-4, None)
-
-    w = dists ** beta                            
-    w = w / w.mean()                             
-
-    return torch.tensor(w, dtype=torch.float32, device=xy_in.device)

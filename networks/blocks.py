@@ -1,150 +1,26 @@
-from __future__ import annotations
 import math
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from torch.nn.utils import spectral_norm
 
-from networks.activations import make_activation, CnActivation
-
-class NTKLinear(nn.Module):
-    def __init__(
-        self,
-        in_features: int,
-        out_features: int,
-        bias: bool = True,
-        orthogonal_init: bool = True,   
-    ):
+class SirenLayer(nn.Module):
+    def __init__(self, in_dim, out_dim, w0=30.0, is_first=False):
         super().__init__()
-        self.in_features  = in_features
-        self.out_features = out_features
-        self.scale = 1.0 / math.sqrt(in_features)
+        self.linear = nn.Linear(in_dim, out_dim)
+        self.w0 = w0
+        self.is_first = is_first
+        self.init_weights()
 
-        self.weight = nn.Parameter(torch.empty(out_features, in_features))
-        self.bias   = nn.Parameter(torch.zeros(out_features)) if bias else None
+    def init_weights(self):
+        with torch.no_grad():
+            if self.is_first:
 
-        if orthogonal_init:
+                bound = 1 / math.sqrt(self.linear.in_features)
+            else:
+                bound = math.sqrt(6 / self.linear.in_features) / self.w0
+            self.linear.weight.uniform_(-bound, bound)
 
-            nn.init.orthogonal_(self.weight)
-        else:
-            nn.init.normal_(self.weight, 0.0, 1.0)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return F.linear(x, self.weight * self.scale, self.bias)
-
-    def extra_repr(self) -> str:
-        return (
-            f"in={self.in_features}, out={self.out_features}, "
-            f"scale={self.scale:.4f}"
-        )
-
-def sn_linear(in_f: int, out_f: int, bias: bool = True) -> nn.Module:
-    return spectral_norm(nn.Linear(in_f, out_f, bias=bias))
-
-def make_linear(
-    in_f: int,
-    out_f: int,
-    bias: bool = True,
-    use_ntk_param: bool = True,
-    orthogonal_init: bool = True,
-) -> nn.Module:
-    if use_ntk_param:
-        return NTKLinear(in_f, out_f, bias=bias, orthogonal_init=orthogonal_init)
-    else:
-        return sn_linear(in_f, out_f, bias=bias)
-
-class ResBlock(nn.Module):
-    def __init__(
-        self,
-        hidden: int,
-        expansion: int = 1,
-        activation: str = "gelu",
-        use_ntk_param: bool = True,
-        alpha_init: float = 1e-3,      
-    ):
-        super().__init__()
-        mid = hidden * expansion
-
-        self.norm = nn.LayerNorm(hidden)
-
-        self.net = nn.Sequential(
-            make_linear(hidden, mid, use_ntk_param=use_ntk_param),
-            make_activation(activation),
-            make_linear(mid, hidden, use_ntk_param=use_ntk_param),
-        )
-
-        self.alpha = nn.Parameter(torch.full((1,), alpha_init))
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return x + self.alpha * self.net(self.norm(x))
-
-class ScaleBranch(nn.Module):
-    def __init__(
-        self,
-        f_lo: float,
-        f_hi: float,
-        n_fourier: int,
-        hidden: int,
-        n_blocks: int,
-        expansion: int = 1,
-        activation: str = "gelu",
-        use_ntk_param: bool = True,
-        trainable_freqs: bool = True,
-        extra_in_dim: int = 0,
-        init_freqs: torch.Tensor | None = None,
-        alpha_init: float = 1e-3,      
-    ):
-        super().__init__()
-        self.n_fourier = n_fourier
-
-        if init_freqs is not None and len(init_freqs) == n_fourier:
-            self.w_x = nn.Parameter(init_freqs.clone(), requires_grad=trainable_freqs)
-            self.w_y = nn.Parameter(init_freqs.clone(), requires_grad=trainable_freqs)
-        else:
-            target_f = torch.linspace(math.log(f_lo), math.log(f_hi), n_fourier)
-            self.w_x = nn.Parameter(target_f.clone(), requires_grad=trainable_freqs)
-            self.w_y = nn.Parameter(target_f.clone(), requires_grad=trainable_freqs)
-
-        fourier_dim = 2 + 8 * n_fourier          
-        self._fourier_norm = math.sqrt(fourier_dim / 2.0)
-        self._fourier_dim  = fourier_dim          
-
-        in_f = fourier_dim + extra_in_dim
-        self.proj = nn.Sequential(
-            make_linear(in_f, hidden, use_ntk_param=use_ntk_param),
-            make_activation(activation),
-        )
-        self.blocks = nn.Sequential(*[
-            ResBlock(hidden, expansion, activation, use_ntk_param, alpha_init)
-            for _ in range(max(n_blocks, 1))
-        ])
-
-    def _fourier(self, xy: torch.Tensor) -> torch.Tensor:
-        Bx = self.w_x.exp()       
-        By = self.w_y.exp()
-        px = math.pi * xy[:, 0:1] * Bx   
-        py = math.pi * xy[:, 1:2] * By
-
-        raw = torch.cat([
-            xy,                                   
-            px.sin(), px.cos(),                   
-            py.sin(), py.cos(),                   
-            (px + py).sin(), (px + py).cos(),     
-            (px - py).sin(), (px - py).cos(),     
-        ], dim=-1)                                
-
-        return raw / self._fourier_norm
-
-    def forward(
-        self,
-        xy: torch.Tensor,
-        extra_features: torch.Tensor | None = None,
-    ):
-        f = self._fourier(xy)
-        f_full = torch.cat([f, extra_features], dim=-1) if extra_features is not None else f
-        h = self.proj(f_full)
-        h = self.blocks(h)
-        return h, f   
+    def forward(self, x):
+        return torch.sin(self.w0 * self.linear(x))
 
 class FourierNet(nn.Module):
     def __init__(
@@ -153,88 +29,61 @@ class FourierNet(nn.Module):
         hidden: int,
         n_blocks: int,
         n_fourier: int,
-        n_scales: int,
-        freq_min: float,
-        freq_max: float,
-        expansion: int,
-        shortcut: bool,
-        activation: str = "gelu",
-        use_ntk_param: bool = True,
-        trainable_freqs: bool = True,
+        freq_min: float = 0.5,
+        freq_max: float = 5.0,  
+        trainable_freqs: bool = False,
         corner_enrichment=None,
         init_freqs: torch.Tensor | None = None,
-        alpha_init: float = 1e-3,      
     ):
         super().__init__()
+
         self.corner_enrichment = corner_enrichment
-        corner_dim = corner_enrichment.out_dim if corner_enrichment is not None else 0
+        corner_dim = corner_enrichment.out_dim if corner_enrichment else 0
 
-        log_bounds = torch.linspace(
-            math.log(freq_min), math.log(freq_max), n_scales + 1
-        )
-        base_nb = n_blocks // n_scales
-        extra   = n_blocks % n_scales
-
-        branches = []
-        for i in range(n_scales):
-            f_lo = math.exp(log_bounds[i].item())
-            f_hi = math.exp(log_bounds[i + 1].item())
-            nb   = base_nb + (1 if i < extra else 0)
-            branches.append(ScaleBranch(
-                f_lo=f_lo, f_hi=f_hi,
-                n_fourier=n_fourier,
-                hidden=hidden,
-                n_blocks=nb,
-                expansion=expansion,
-                activation=activation,
-                use_ntk_param=use_ntk_param,
-                trainable_freqs=trainable_freqs,
-                extra_in_dim=corner_dim,
-                init_freqs=init_freqs,
-                alpha_init=alpha_init,
-            ))
-        self.branches = nn.ModuleList(branches)
-
-        if use_ntk_param:
-            self.head = NTKLinear(hidden, out_dim, orthogonal_init=True)
+        if init_freqs is not None:
+            freqs = init_freqs
         else:
-            self.head = nn.Linear(hidden, out_dim)
+            freq_max = min(freq_max, 5.0)  
+            freqs = torch.linspace(math.log(freq_min), math.log(freq_max), n_fourier)
 
-        if shortcut:
-            fourier_total = branches[0]._fourier_dim * n_scales + corner_dim
-            if use_ntk_param:
-                self.shortcut_layer = NTKLinear(
-                    fourier_total, out_dim, bias=False, orthogonal_init=True
-                )
-            else:
-                self.shortcut_layer = nn.Linear(fourier_total, out_dim, bias=False)
-        else:
-            self.shortcut_layer = None
+        self.w_x = nn.Parameter(freqs.clone(), requires_grad=trainable_freqs)
+        self.w_y = nn.Parameter(freqs.clone(), requires_grad=trainable_freqs)
+        self.n_fourier = n_fourier
 
-        total_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
-        print(
-            f"[{self.__class__.__name__}] {total_params:,} trainable params | "
-            f"act={activation} | ntk_param={use_ntk_param} | "
-            f"ortho_init=True | pre_layernorm=True | "
-            f"alpha_init={alpha_init} | fourier_norm=True"
-        )
+        self.fourier_dim = 2 + 8 * n_fourier
+        self.norm = math.sqrt(self.fourier_dim / 2)  
 
-    def forward(self, xy: torch.Tensor) -> torch.Tensor:
-        cf = self.corner_enrichment(xy) if self.corner_enrichment is not None else None
+        in_dim = self.fourier_dim + corner_dim
 
-        branch_outputs, fourier_feats = [], []
-        for branch in self.branches:
-            h, f = branch(xy, extra_features=cf)
-            branch_outputs.append(h)
-            fourier_feats.append(f)
+        layers = [SirenLayer(in_dim, hidden, w0=30.0, is_first=True)]
+        for _ in range(max(n_blocks - 1, 1)):
+            layers.append(SirenLayer(hidden, hidden, w0=1.0))  
+        self.siren = nn.Sequential(*layers)
 
-        combined = torch.stack(branch_outputs, dim=0).sum(dim=0)
-        out = self.head(combined)
+        self.head = nn.Linear(hidden, out_dim)
+        nn.init.orthogonal_(self.head.weight)
 
-        if self.shortcut_layer is not None:
-            all_f = torch.cat(fourier_feats, dim=-1)
-            if cf is not None:
-                all_f = torch.cat([all_f, cf], dim=-1)
-            out = out + self.shortcut_layer(all_f)
+    def fourier(self, xy):
+        Bx = self.w_x.exp()
+        By = self.w_y.exp()
 
-        return out
+        px = math.pi * xy[:, 0:1] * Bx
+        py = math.pi * xy[:, 1:2] * By
+
+        raw = torch.cat([
+            xy,
+            px.sin(), px.cos(),
+            py.sin(), py.cos(),
+            (px + py).sin(), (px + py).cos(),
+            (px - py).sin(), (px - py).cos(),
+        ], dim=-1)
+
+        return raw / self.norm
+
+    def forward(self, xy):
+        cf = self.corner_enrichment(xy) if self.corner_enrichment else None
+        f = self.fourier(xy)
+        if cf is not None:
+            f = torch.cat([f, cf], dim=-1)
+        h = self.siren(f)
+        return self.head(h)
