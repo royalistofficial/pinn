@@ -34,7 +34,7 @@ def run(domain_name: str = "l_shape") -> None:
         logger.section(f"PINN + FEM: '{domain_name}'")
 
         domain = make_domain(domain_name)
-        solution = PolynomialSolution()
+        solution = SineSolution()
 
         mesher = Mesher(max_area=DEFAULT_TRI_AREA, lloyd_iters=3,
                         boundary_density=BOUNDARY_DENSITY_PTS)

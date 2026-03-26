@@ -17,6 +17,12 @@ class PINN(nn.Module):
 
         if MLP:
             self.model = self.build_mlp()
+
+            total_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
+            print(
+                f"[{self.__class__.__name__}] {total_params:,} trainable params | "
+            )
+            
         else:
             self.model = FourierNet(
                 out_dim=1,
