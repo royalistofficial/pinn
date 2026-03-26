@@ -369,7 +369,7 @@ def plot_ntk_full_analysis(
               xlabel="", ylabel="log₁₀(значение)")
 
     ax22 = fig.add_subplot(gs[2, 2])
-    n_modes  = min(20, N)
+    n_modes  = min(32, N)
     m_idx    = np.arange(1, n_modes + 1)
     rates_K  = 1.0 - np.exp(-eig_K[:n_modes].clip(0))
     rates_KL = 1.0 - np.exp(-eig_KL[:n_modes].clip(0))

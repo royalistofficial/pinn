@@ -9,11 +9,11 @@ GAUSS_LINE_ORDER = 7
 BOUNDARY_DENSITY_PTS = 100
 
 PINN_ARCH = {
-    "hidden":        128, 
+    "hidden":        16, 
     "n_blocks":      3,    
-    "n_fourier":     32,   
+    "n_fourier":     4,   
     "freq_min":      1.0,
-    "freq_max":      5.0,
+    "freq_max":      2.0,
     "trainable_freqs": False
 }
 
@@ -29,10 +29,10 @@ DEFAULT_LR   = 1e-2
 TRAIN_EPOCHS = 1000      
 BC_PENALTY   = 10.0    
 
-USE_CORNER = True
+USE_CORNER = False
 
 NTK_ANALYSIS_EVERY  = 200  
-NTK_ANALYSIS_POINTS = 1024
+NTK_ANALYSIS_POINTS = 256
 
 USE_ADAPTIVE_FREQ = False
 ADAPTIVE_FREQ_POINTS = 1024

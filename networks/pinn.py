@@ -14,7 +14,6 @@ class PINN(nn.Module):
         init_freqs: Optional[torch.Tensor] = None,
     ):
         super().__init__()
-
         if MLP:
             self.model = self.build_mlp()
 
