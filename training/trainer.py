@@ -217,39 +217,6 @@ class Trainer:
         callback.on_phase_end()
         self._plot_final_reports()
 
-    def _update_ntk_weights(self, epoch: int) -> None:
-        s   = self.data.sample
-        N   = min(NTK_WEIGHT_POINTS, len(s.quad.xy_in))
-        M   = min(NTK_WEIGHT_POINTS, len(s.quad.xy_bd))
-        idx = torch.linspace(0, len(s.quad.xy_in) - 1, N).long()
-        idx_bd = torch.linspace(0, len(s.quad.xy_bd) - 1, M).long()
-
-        X_in = s.quad.xy_in[idx].detach()
-        X_bd = s.quad.xy_bd[idx_bd].detach()
-
-        J_r   = compute_pde_jacobian(self.pinn, X_in)   
-        tr_Krr = float((J_r ** 2).sum().item())
-
-        J_b   = compute_jacobian(self.pinn, X_bd)        
-        tr_Kbb = float((J_b ** 2).sum().item())
-
-        tr_total = tr_Krr + tr_Kbb
-        if tr_total < 1e-30:
-            return
-
-        lam_r_new = float(np.clip(tr_total / max(tr_Krr, 1e-30), 0.1, 1e4))
-        lam_b_new = float(np.clip(tr_total / max(tr_Kbb, 1e-30), 0.1, 1e4))
-
-        m = NTK_WEIGHT_MOMENTUM
-        self._lambda_r = m * self._lambda_r + (1 - m) * lam_r_new
-        self._lambda_b = m * self._lambda_b + (1 - m) * lam_b_new
-
-        self.logger(
-            f"  [NTKWeights] Epoch {epoch}: "
-            f"tr_Krr={tr_Krr:.2e}  tr_Kbb={tr_Kbb:.2e}  |  "
-            f"λ_r={self._lambda_r:.3f}  λ_b={self._lambda_b:.3f}"
-        )
-
     def _run_ntk_analysis(self, epoch: int) -> None:
         xy_all = self.data.sample.quad.xy_in.detach()  
         N_all  = len(xy_all)
