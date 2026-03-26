@@ -64,7 +64,7 @@ def plot_ntk_analysis(
     colors = plt.cm.RdYlGn(rates / max(rates.max(), 1e-10))
     ax.bar(range(len(rates)), rates, color=colors, edgecolor='gray', linewidth=0.5)
     ax.set_title(
-        f'Скорость сходимости мод: 1 − exp(−λₖ)',
+        f'Скорость сходимости мод: 1 - exp(−λₖ)',
         fontsize=11, fontweight='600',
     )
     ax.set_xlabel('Мода k')

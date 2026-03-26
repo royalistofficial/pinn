@@ -154,11 +154,15 @@ def ntk_preconditioned_step_batched(
 
 def extract_learned_frequencies(model: nn.Module) -> np.ndarray:
     freqs = []
-    if hasattr(model, 'branches'):
-        for branch in model.branches:
-            if hasattr(branch, 'w_x'):
+
+    net = model.model if hasattr(model, "model") else model
+
+    if hasattr(net, "branches"):
+        for branch in net.branches:
+            if hasattr(branch, "w_x"):
                 Bx = branch.w_x.exp().detach().cpu().numpy()
                 By = branch.w_y.exp().detach().cpu().numpy()
                 freqs.extend(Bx.tolist())
                 freqs.extend(By.tolist())
+
     return np.array(freqs) if freqs else np.array([])

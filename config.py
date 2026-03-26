@@ -22,6 +22,13 @@ PINN_ARCH = {
     "trainable_freqs": True,
 }
 
+PINN_MLP = {
+    "hidden": 32,           
+    "n_blocks": 2,
+}
+
+MLP = False
+
 LOSS_TYPE = "mse"           
 DEFAULT_LR = 1e-2
 TRAIN_EPOCHS = 1000
@@ -29,14 +36,14 @@ BC_PENALTY = 200.0
 
 USE_NTK_PRECOND = False     
 NTK_PRECOND_EVERY = 50      
-NTK_PRECOND_POINTS = 200    
+NTK_PRECOND_POINTS = 64    
 NTK_PRECOND_REG = 1e-4      
 
 USE_ADAPTIVE_FREQ = True    
-ADAPTIVE_FREQ_POINTS = 64  
+ADAPTIVE_FREQ_POINTS = 256  
 
 NTK_ANALYSIS_EVERY = 100    
-NTK_ANALYSIS_POINTS = 64    
+NTK_ANALYSIS_POINTS = 256    
 
 FEM_TRI_AREA = 0.005
 FEM_REFINE_LEVELS = [0.1, 0.05, 0.01, 0.005]

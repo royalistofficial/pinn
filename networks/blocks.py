@@ -171,4 +171,3 @@ class FourierNet(nn.Module):
 
         return out
 
-FourierCnNet = FourierNet
