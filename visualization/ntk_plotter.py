@@ -30,8 +30,18 @@ def plot_ntk_analysis(
     fig, axes = plt.subplots(2, 2, figsize=(14, 12))
     fig.patch.set_facecolor("white")
 
+    K = analysis["ntk_matrix"]
+
+    D = np.diag(K.sum(axis=1))
+    L = D - K
+
+    eigvals, eigvecs = np.linalg.eigh(L)
+
+    order = np.argsort(eigvecs[:,1])
+    K_sorted = K[order][:, order]
+
     ax = axes[0, 0]
-    im = ax.imshow(analysis["ntk_matrix"], cmap='viridis', aspect='auto')
+    im = ax.imshow(K_sorted, cmap='viridis', aspect='auto')
     ax.set_title(f'NTK матрица K (эпоха {epoch})', fontsize=12, fontweight='600')
     ax.set_xlabel('Точка j')
     ax.set_ylabel('Точка i')
