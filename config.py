@@ -28,7 +28,7 @@ PINN_MLP = {
     "n_blocks": 3,
 }
 
-MLP = True
+MLP = False
 
 LOSS_TYPE    = "mse"
 DEFAULT_LR   = 1e-2
