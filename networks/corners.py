@@ -20,23 +20,21 @@ class CornerEnrichment(nn.Module):
         self.out_dim = n_corners * self.features_per_corner
 
     @property
-    def alpha(self) -> torch.Tensor:
+    def alpha(self):
         return torch.exp(self.log_alpha)
 
-    def forward(self, xy: torch.Tensor) -> torch.Tensor:
+    def forward(self, xy):
         delta = xy.unsqueeze(1) - self.corners.unsqueeze(0)
         r = torch.sqrt((delta ** 2).sum(dim=-1) + 1e-12)
         theta = torch.atan2(delta[..., 1], delta[..., 0])
         alpha = self.alpha
         scales = torch.sigmoid(self.corner_scales)
-
         parts = [r.pow(alpha.unsqueeze(0))]
         for k in range(1, self.n_harmonics + 1):
             r_ka = r.pow(k * alpha.unsqueeze(0))
             kt = k * theta
             parts.append(r_ka * torch.cos(kt))
             parts.append(r_ka * torch.sin(kt))
-
         features = torch.stack(parts, dim=-1)
         features = features * scales.unsqueeze(0).unsqueeze(-1)
         return features.reshape(xy.shape[0], -1)
@@ -45,12 +43,10 @@ def extract_corners(domain: BaseDomain, angle_threshold_deg: float = 170.0
                     ) -> Tuple[torch.Tensor, torch.Tensor]:
     bv = domain.boundary_vertices()
     bs = domain.boundary_segments()
-
     vertex_edges: dict = {}
     for ei, (i0, i1) in enumerate(bs):
         vertex_edges.setdefault(i0, []).append((i1, ei))
         vertex_edges.setdefault(i1, []).append((i0, ei))
-
     corners, angles = [], []
     for vi in range(len(bv)):
         if vi not in vertex_edges:
@@ -79,10 +75,8 @@ def extract_corners(domain: BaseDomain, angle_threshold_deg: float = 170.0
                 if abs(math.degrees(interior_angle) - 180.0) > (180.0 - angle_threshold_deg):
                     corners.append(p.copy())
                     angles.append(interior_angle)
-
     if not corners:
         return torch.zeros(0, 2), torch.zeros(0)
-
     corners_arr = np.array(corners)
     angles_arr = np.array(angles)
     _, unique_idx = np.unique(np.round(corners_arr, decimals=8), axis=0, return_index=True)

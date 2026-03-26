@@ -2,53 +2,86 @@ from __future__ import annotations
 import math
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.nn.utils import spectral_norm
-from networks.activations import CnActivation
+
+from networks.activations import make_activation, CnActivation
+
+class NTKLinear(nn.Module):
+    def __init__(self, in_features: int, out_features: int, bias: bool = True):
+        super().__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.scale = 1.0 / math.sqrt(in_features)
+
+        self.weight = nn.Parameter(torch.randn(out_features, in_features))
+        self.bias = nn.Parameter(torch.zeros(out_features)) if bias else None
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return F.linear(x, self.weight * self.scale, self.bias)
+
+    def extra_repr(self) -> str:
+        return (f"in_features={self.in_features}, out_features={self.out_features}, "
+                f"bias={self.bias is not None}, scale={self.scale:.4f}")
 
 def sn_linear(in_f: int, out_f: int, bias: bool = True) -> nn.Module:
     return spectral_norm(nn.Linear(in_f, out_f, bias=bias))
 
-class CnResBlock(nn.Module):
-    def __init__(self, hidden: int, n_smooth: int, expansion: int, alpha: float = 0.01):
+def make_linear(in_f: int, out_f: int, bias: bool = True,
+                use_ntk_param: bool = True) -> nn.Module:
+    if use_ntk_param:
+        return NTKLinear(in_f, out_f, bias=bias)
+    else:
+        return sn_linear(in_f, out_f, bias=bias)
+
+class ResBlock(nn.Module):
+    def __init__(self, hidden: int, expansion: int = 1,
+                 activation: str = "gelu", use_ntk_param: bool = True):
         super().__init__()
-        self.norm = nn.LayerNorm(hidden)
         if expansion == 1:
             self.net = nn.Sequential(
-                sn_linear(hidden, hidden),
-                CnActivation(n=n_smooth, alpha=alpha),
-                sn_linear(hidden, hidden),
+                make_linear(hidden, hidden, use_ntk_param=use_ntk_param),
+                make_activation(activation),
+                make_linear(hidden, hidden, use_ntk_param=use_ntk_param),
             )
         else:
             mid = hidden * expansion
             self.net = nn.Sequential(
-                sn_linear(hidden, mid),
-                CnActivation(n=n_smooth, alpha=alpha),
-                sn_linear(mid, hidden),
+                make_linear(hidden, mid, use_ntk_param=use_ntk_param),
+                make_activation(activation),
+                make_linear(mid, hidden, use_ntk_param=use_ntk_param),
             )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return x + self.net(self.norm(x))
+        return x + self.net(x)
 
 class ScaleBranch(nn.Module):
     def __init__(self, f_lo: float, f_hi: float, n_fourier: int,
-                 hidden: int, n_blocks: int, n_smooth: int,
-                 expansion: int, alpha: float = 0.01,
-                 trainable_freqs: bool = True, extra_in_dim: int = 0):
+                 hidden: int, n_blocks: int,
+                 expansion: int = 1, activation: str = "gelu",
+                 use_ntk_param: bool = True,
+                 trainable_freqs: bool = True, extra_in_dim: int = 0,
+                 init_freqs: torch.Tensor | None = None):
         super().__init__()
-        target_f =torch.linspace(math.log(f_lo), math.log(f_hi), n_fourier)
-        self.w_x = nn.Parameter(target_f.clone(), requires_grad=trainable_freqs)
-        self.w_y = nn.Parameter(target_f.clone(), requires_grad=trainable_freqs)
+
+        if init_freqs is not None and len(init_freqs) == n_fourier:
+
+            self.w_x = nn.Parameter(init_freqs.clone(), requires_grad=trainable_freqs)
+            self.w_y = nn.Parameter(init_freqs.clone(), requires_grad=trainable_freqs)
+        else:
+            target_f = torch.linspace(math.log(f_lo), math.log(f_hi), n_fourier)
+            self.w_x = nn.Parameter(target_f.clone(), requires_grad=trainable_freqs)
+            self.w_y = nn.Parameter(target_f.clone(), requires_grad=trainable_freqs)
 
         in_f = 2 + 8 * n_fourier + extra_in_dim
         self.proj = nn.Sequential(
-            sn_linear(in_f, hidden),
-            CnActivation(n=n_smooth, alpha=alpha),
+            make_linear(in_f, hidden, use_ntk_param=use_ntk_param),
+            make_activation(activation),
         )
         self.blocks = nn.Sequential(*[
-            CnResBlock(hidden, n_smooth, expansion, alpha)
+            ResBlock(hidden, expansion, activation, use_ntk_param)
             for _ in range(max(n_blocks, 1))
         ])
-        self.norm = nn.LayerNorm(hidden)
         self._fourier_dim = 2 + 8 * n_fourier
 
     def _fourier(self, xy: torch.Tensor) -> torch.Tensor:
@@ -58,10 +91,12 @@ class ScaleBranch(nn.Module):
         py = math.pi * xy[:, 1:2] * By
         return torch.cat([
             xy, px.sin(), px.cos(), py.sin(), py.cos(),
-            (px+py).sin(), (px+py).cos(), (px-py).sin(), (px-py).cos(),
+            (px + py).sin(), (px + py).cos(),
+            (px - py).sin(), (px - py).cos(),
         ], dim=-1)
 
-    def forward(self, xy, extra_features=None):
+    def forward(self, xy: torch.Tensor,
+                extra_features: torch.Tensor | None = None):
         f = self._fourier(xy)
         if extra_features is not None:
             f_full = torch.cat([f, extra_features], dim=-1)
@@ -69,16 +104,17 @@ class ScaleBranch(nn.Module):
             f_full = f
         h = self.proj(f_full)
         h = self.blocks(h)
-        h = self.norm(h)
         return h, f
 
-class FourierCnNet(nn.Module):
-    def __init__(self, out_dim: int, n_smooth: int,
-                 hidden: int, n_blocks: int, n_fourier: int, n_scales: int,
+class FourierNet(nn.Module):
+    def __init__(self, out_dim: int, hidden: int, n_blocks: int,
+                 n_fourier: int, n_scales: int,
                  freq_min: float, freq_max: float, expansion: int,
-                 shortcut: bool, alpha: float = 0.01,
+                 shortcut: bool, activation: str = "gelu",
+                 use_ntk_param: bool = True,
                  trainable_freqs: bool = True,
-                 corner_enrichment=None):
+                 corner_enrichment=None,
+                 init_freqs: torch.Tensor | None = None):
         super().__init__()
         self.corner_enrichment = corner_enrichment
         corner_dim = corner_enrichment.out_dim if corner_enrichment is not None else 0
@@ -94,9 +130,12 @@ class FourierCnNet(nn.Module):
             nb = base_nb + (1 if i < extra else 0)
             branches.append(ScaleBranch(
                 f_lo=f_lo, f_hi=f_hi, n_fourier=n_fourier,
-                hidden=hidden, n_blocks=nb, n_smooth=n_smooth,
-                expansion=expansion, alpha=alpha,
-                trainable_freqs=trainable_freqs, extra_in_dim=corner_dim,
+                hidden=hidden, n_blocks=nb,
+                expansion=expansion, activation=activation,
+                use_ntk_param=use_ntk_param,
+                trainable_freqs=trainable_freqs,
+                extra_in_dim=corner_dim,
+                init_freqs=init_freqs,
             ))
         self.branches = nn.ModuleList(branches)
 
@@ -109,7 +148,8 @@ class FourierCnNet(nn.Module):
             self.shortcut_layer = None
 
         total_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
-        print(f"[{self.__class__.__name__}] {total_params:,} trainable params.")
+        print(f"[{self.__class__.__name__}] {total_params:,} trainable params, "
+              f"activation={activation}, ntk_param={use_ntk_param}")
 
     def forward(self, xy: torch.Tensor) -> torch.Tensor:
         cf = self.corner_enrichment(xy) if self.corner_enrichment is not None else None
@@ -128,4 +168,7 @@ class FourierCnNet(nn.Module):
             if cf is not None:
                 all_f = torch.cat([all_f, cf], dim=-1)
             out = out + self.shortcut_layer(all_f)
+
         return out
+
+FourierCnNet = FourierNet

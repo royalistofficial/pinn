@@ -7,8 +7,10 @@ import torch
 class AnalyticalSolution(abc.ABC):
     @abc.abstractmethod
     def eval(self, xy: torch.Tensor) -> torch.Tensor: ...
+
     @abc.abstractmethod
     def grad(self, xy: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]: ...
+
     @abc.abstractmethod
     def rhs(self, xy: torch.Tensor) -> torch.Tensor: ...
 
@@ -19,6 +21,14 @@ class AnalyticalSolution(abc.ABC):
     def neumann_data(self, xy: torch.Tensor, normals: torch.Tensor) -> torch.Tensor:
         g = self.grad_vector(xy)
         return (g * normals).sum(dim=1, keepdim=True)
+
+    @property
+    def regularity_order(self) -> float:
+        return 2.0  
+
+    @property
+    def sobolev_index(self) -> float:
+        return self.regularity_order
 
 class SineSolution(AnalyticalSolution):
     def eval(self, xy):
@@ -32,6 +42,10 @@ class SineSolution(AnalyticalSolution):
     def rhs(self, xy):
         return (2*math.pi**2 * torch.sin(math.pi*xy[:,0]) * torch.sin(math.pi*xy[:,1])).unsqueeze(-1)
 
+    @property
+    def regularity_order(self) -> float:
+        return float('inf')  
+
 class ExponentialSolution(AnalyticalSolution):
     def eval(self, xy):
         return torch.exp(xy[:,0]+xy[:,1]).unsqueeze(-1)
@@ -42,6 +56,10 @@ class ExponentialSolution(AnalyticalSolution):
 
     def rhs(self, xy):
         return -2.0 * torch.exp(xy[:,0]+xy[:,1]).unsqueeze(-1)
+
+    @property
+    def regularity_order(self) -> float:
+        return float('inf')
 
 class PolynomialSolution(AnalyticalSolution):
     def eval(self, xy):
@@ -55,4 +73,12 @@ class PolynomialSolution(AnalyticalSolution):
         x, y = xy[:,0], xy[:,1]
         return (-6*x*y*(x**2+y**2)).unsqueeze(-1)
 
-SOLUTIONS = {"sine": SineSolution, "exponential": ExponentialSolution, "polynomial": PolynomialSolution}
+    @property
+    def regularity_order(self) -> float:
+        return float('inf')
+
+SOLUTIONS = {
+    "sine": SineSolution,
+    "exponential": ExponentialSolution,
+    "polynomial": PolynomialSolution,
+}

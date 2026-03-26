@@ -48,13 +48,11 @@ class DataModule:
             for b in self.bd_loader:
                 yield b
 
-    def scale_weights(self, xy_in: torch.Tensor, xy_bd: torch.Tensor,
-                      vol_w: torch.Tensor, surf_w: torch.Tensor
-                      ) -> Tuple[torch.Tensor, torch.Tensor]:
+    def scale_weights(self, xy_in, xy_bd, vol_w, surf_w):
         return (vol_w * (self.N_in / len(xy_in)),
                 surf_w * (self.N_bd / len(xy_bd)))
 
-    def full_eval_tensors(self) -> Tuple[torch.Tensor, torch.Tensor]:
+    def full_eval_tensors(self):
         xq = self.sample.quad.xy_in.clone().requires_grad_(True)
         xb = self.sample.quad.xy_bd.clone().requires_grad_(True)
         return xq, xb

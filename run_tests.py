@@ -2,7 +2,6 @@ import sys
 import os
 import unittest
 import time
-
 import torch
 import numpy as np
 import random
@@ -23,7 +22,7 @@ def main():
 
     n_tests = _count_tests(suite)
     print(f"\n{'='*70}")
-    print(f"  Majorant PINN Test Suite -- {n_tests} tests")
+    print(f"  PINN + FEM Test Suite -- {n_tests} tests")
     print(f"{'='*70}\n")
 
     t0 = time.time()
@@ -32,12 +31,9 @@ def main():
     elapsed = time.time() - t0
 
     print(f"\n{'='*70}")
-    print(
-        f"  {result.testsRun} ran in {elapsed:.1f}s  |  "
-        f"{'OK' if result.wasSuccessful() else 'FAILED'}  |  "
-        f"{len(result.failures)} failures, {len(result.errors)} errors, "
-        f"{len(result.skipped)} skipped"
-    )
+    print(f"  {result.testsRun} ran in {elapsed:.1f}s  |  "
+          f"{'OK' if result.wasSuccessful() else 'FAILED'}  |  "
+          f"{len(result.failures)} failures, {len(result.errors)} errors")
     print(f"{'='*70}\n")
 
     sys.exit(0 if result.wasSuccessful() else 1)

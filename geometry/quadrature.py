@@ -9,16 +9,14 @@ from geometry.domains import BaseDomain
 
 @dataclass
 class QuadratureData:
-    xy_in: torch.Tensor       
-    vol_w: torch.Tensor        
-    tri_indices: torch.Tensor  
-
-    xy_bd: torch.Tensor        
-    surf_w: torch.Tensor       
-    normals: torch.Tensor      
-    bc_mask: torch.Tensor      
-    tri_indices_bd: torch.Tensor  
-
+    xy_in: torch.Tensor
+    vol_w: torch.Tensor
+    tri_indices: torch.Tensor
+    xy_bd: torch.Tensor
+    surf_w: torch.Tensor
+    normals: torch.Tensor
+    bc_mask: torch.Tensor
+    tri_indices_bd: torch.Tensor
     mesh: Dict[str, np.ndarray]
 
 def ref_triangle_gauss(order: int) -> Tuple[np.ndarray, np.ndarray]:
@@ -77,25 +75,21 @@ class QuadratureBuilder:
             mesh=mesh,
         )
 
-    def _locate_boundary_points(self, xy_bd: np.ndarray,
-                                pts: np.ndarray, tris: np.ndarray) -> np.ndarray:
+    def _locate_boundary_points(self, xy_bd, pts, tris):
         from scipy.spatial import Delaunay
         tri_del = Delaunay(pts)
         simplex_idx = tri_del.find_simplex(xy_bd)
-
         bad = simplex_idx < 0
         if np.any(bad):
             centroids = pts[tris].mean(axis=1)
             for i in np.where(bad)[0]:
                 dists = np.sum((centroids - xy_bd[i]) ** 2, axis=1)
                 simplex_idx[i] = np.argmin(dists)
-
         return np.clip(simplex_idx, 0, len(tris) - 1).astype(np.int64)
 
     def _build_interior(self, pts, tris):
         ref_pts, ref_wts = ref_triangle_gauss(self.tri_order)
         nq = len(ref_wts)
-
         all_xy, all_w, all_tri = [], [], []
         for t_num, tri_idx in enumerate(tris):
             v0, v1, v2 = pts[tri_idx[0]], pts[tri_idx[1]], pts[tri_idx[2]]
@@ -109,16 +103,15 @@ class QuadratureBuilder:
                 all_xy.append([px, py])
                 all_w.append(2.0 * area * ref_wts[q])
                 all_tri.append(t_num)
-
         return (np.array(all_xy, dtype=np.float64),
                 np.array(all_w, dtype=np.float64),
                 np.array(all_tri, dtype=np.int64))
 
-    def _build_boundary(self, domain: BaseDomain, mesh: Dict):
+    def _build_boundary(self, domain, mesh):
         bv = mesh["boundary_vertices"]
         bs = mesh["boundary_segments"]
         gl_t, gl_w = gauss_legendre_01(self.line_order)
-        max_sub_len = math.sqrt(self.device.type == "cpu" and 0.05 or 0.05)
+        max_sub_len = 0.05
 
         bd_xy, bd_w, bd_n, bd_bc = [], [], [], []
         for ei, (i0, i1) in enumerate(bs):
@@ -129,10 +122,8 @@ class QuadratureBuilder:
                 continue
             nx, ny = dy / length, -dx / length
             bc_flag = domain.bc_type(ei)
-
             n_sub = max(1, int(math.ceil(length / max_sub_len)))
             corner_margin = 1e-4
-
             for s in range(n_sub):
                 t0 = s / n_sub
                 t1 = (s + 1) / n_sub

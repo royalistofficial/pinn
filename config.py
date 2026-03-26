@@ -1,41 +1,42 @@
 import torch
 
-# Базовые настройки
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 OUTPUT_DIR = "data"
-CONSTANTS_DIR = "data_const"
 
-# Настройки генерации сетки и квадратур
-DEFAULT_TRI_AREA = 0.01
+DEFAULT_TRI_AREA = 0.05
 GAUSS_TRI_ORDER = 5
 GAUSS_LINE_ORDER = 7
 BOUNDARY_DENSITY_PTS = 100
 
-# Настройки архитектуры PINN
-CN_ALPHA = 0.01
-CN_EXPANSION = 1
-
 PINN_ARCH = {
-    "hidden": 4,
-    "n_blocks": 1,
-    "n_fourier": 2,
-    "n_scales": 2,
+    "hidden": 32,           
+    "n_blocks": 1,          
+    "n_fourier": 4,         
+    "n_scales": 1,          
     "freq_min": 0.1,
-    "freq_max": 2.0,
-    "expansion": CN_EXPANSION,
+    "freq_max": 3.0,
+    "expansion": 1,
     "shortcut": True,
-    "alpha": CN_ALPHA,
+    "activation": "silu",   
+    "use_ntk_param": True,  
     "trainable_freqs": True,
 }
 
-# --- Настройки обучения обычного PINN ---
-
-# Флаг выбора функции потерь: 
-# "mse" - стандартная среднеквадратичная ошибка (на основе точек)
-# "norm" - использование L2-норм с интеграцией по Гауссу
-LOSS_TYPE = "mse" 
-
-# Скорость обучения и эпохи
+LOSS_TYPE = "mse"           
 DEFAULT_LR = 1e-2
-TRAIN_EPOCHS = 5000 
+TRAIN_EPOCHS = 1000
 BC_PENALTY = 200.0
+
+USE_NTK_PRECOND = False     
+NTK_PRECOND_EVERY = 50      
+NTK_PRECOND_POINTS = 200    
+NTK_PRECOND_REG = 1e-4      
+
+USE_ADAPTIVE_FREQ = True    
+ADAPTIVE_FREQ_POINTS = 64  
+
+NTK_ANALYSIS_EVERY = 100    
+NTK_ANALYSIS_POINTS = 64    
+
+FEM_TRI_AREA = 0.005
+FEM_REFINE_LEVELS = [0.1, 0.05, 0.01, 0.005]

@@ -1,4 +1,10 @@
 .vscode/
 data/
 __pycache__/
+*.pyc
+*.pth
 test.sh
+.idea/
+*.egg-info/
+dist/
+build/
