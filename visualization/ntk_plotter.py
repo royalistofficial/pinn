@@ -22,8 +22,9 @@ def plot_ntk_analysis(
     os.makedirs(output_dir, exist_ok=True)
     device = next(model.parameters()).device
 
-    n_pts = 64
-    xy = torch.rand(n_pts, 2, device=device) * 2 - 1
+    grid = torch.linspace(-1,1,8)
+    X,Y = torch.meshgrid(grid,grid,indexing="ij")
+    xy = torch.stack([X.flatten(),Y.flatten()],dim=1)
 
     analysis = ntk_spectrum_analysis(model, xy)
 

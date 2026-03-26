@@ -92,7 +92,7 @@ def ntk_spectrum_analysis(model: nn.Module, X: torch.Tensor) -> dict:
     p = eig_pos / eig_pos.sum()
     eff_rank = torch.exp(-torch.sum(p * torch.log(p + 1e-30))).item()
 
-    rates = 1.0 - torch.exp(-eig_sorted[:min(10, len(eig_sorted))])
+    rates = 1.0 - torch.exp(-eig_sorted[:min(20, len(eig_sorted))])
 
     return {
         "eigenvalues": eig_sorted.cpu().numpy(),
