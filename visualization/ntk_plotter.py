@@ -488,65 +488,6 @@ def plot_spectrum_evolution(
     plt.close(fig)
     print(f"[NTK] Saved spectrum evolution → {out_path}")
 
-def plot_adaptive_frequencies(
-    init_freqs: np.ndarray,
-    learned_freqs: np.ndarray,
-    spectrum_info: Optional[dict] = None,
-    output_dir: str = "data/ntk_plots",
-) -> None:
-    os.makedirs(output_dir, exist_ok=True)
-
-    n_panels = 3 if spectrum_info is not None else 2
-    fig, axes = plt.subplots(1, n_panels, figsize=(6 * n_panels, 5),
-                             facecolor="white")
-
-    ax = axes[0]
-    if len(init_freqs) > 0:
-        ax.stem(np.arange(len(init_freqs)), np.exp(init_freqs),
-                linefmt="b-", markerfmt="bo", basefmt="gray",
-                label="Начальные")
-    if len(learned_freqs) > 0:
-        ax.stem(np.arange(len(learned_freqs)), learned_freqs,
-                linefmt="r-", markerfmt="r^", basefmt="gray",
-                label="Выученные")
-    _ax_style(ax, title="Частоты Фурье: начальные vs выученные",
-              xlabel="Индекс", ylabel="Частота")
-    ax.legend(fontsize=9)
-
-    ax = axes[1]
-    if len(init_freqs) > 0:
-        ax.hist(np.exp(init_freqs), bins=15, alpha=0.65,
-                label="Начальные", color=_PALETTE["K"], edgecolor="white")
-    if len(learned_freqs) > 0:
-        ax.hist(learned_freqs, bins=15, alpha=0.65,
-                label="Выученные", color=_PALETTE["K_L"], edgecolor="white")
-    _ax_style(ax, title="Распределение частот",
-              xlabel="Частота", ylabel="Количество")
-    ax.legend(fontsize=9)
-
-    if spectrum_info is not None and n_panels > 2:
-        ax = axes[2]
-        rf = spectrum_info["radial_freqs"]
-        rp = spectrum_info["radial_power"]
-        mask = rp > 1e-10
-        if mask.any():
-            ax.loglog(rf[mask], rp[mask], "k.-", linewidth=1, markersize=4,
-                      label="Спектр мощности f(x)")
-        for f in np.exp(init_freqs):
-            ax.axvline(x=f, color=_PALETTE["K"], alpha=0.25, linewidth=1)
-        _ax_style(ax, title="Спектр мощности правой части f(x,y)",
-                  xlabel="Частота", ylabel="Мощность")
-        ax.legend(fontsize=9)
-
-    fig.suptitle("Адаптивная инициализация частот Фурье",
-                 fontsize=12, fontweight="700", color=_PALETTE["text"])
-    fig.tight_layout()
-
-    out_path = os.path.join(output_dir, "adaptive_frequencies.png")
-    fig.savefig(out_path, dpi=150, bbox_inches="tight", facecolor="white")
-    plt.close(fig)
-    print(f"[NTK] Saved adaptive frequencies → {out_path}")
-
 def plot_ntk_analysis(
         model: nn.Module,
         epoch: int,

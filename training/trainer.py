@@ -9,18 +9,11 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from config import (
     DEVICE, DEFAULT_LR, TRAIN_EPOCHS, BC_PENALTY, LOSS_TYPE, OUTPUT_DIR,
-    NTK_ANALYSIS_EVERY, NTK_ANALYSIS_POINTS, NTK_NODE_ORDER, USE_CORNER
+    NTK_ANALYSIS_EVERY, NTK_ANALYSIS_POINTS, NTK_NODE_ORDER
 )
 
-from networks.pinn import PINN
-from networks.corners import build_corner_enrichment
-from networks.ntk_utils import (
-    extract_learned_frequencies,
-    compute_jacobian,
-    compute_pde_jacobian,
-    compute_ntk_from_jacobian,
-)
-from networks.freq_init import compute_adaptive_frequencies
+from networks.architectures import CURRENT_ARCHITECTURE_CONFIG
+from networks.pinn import PINN, PINNConfig
 
 from training.data_module import DataModule, prepare_sample
 from evaluation.evaluator import Evaluator
@@ -32,7 +25,6 @@ from functionals.integrals import domain_integral, boundary_integral
 from visualization.ntk_plotter import (
     plot_ntk_full_analysis,
     plot_spectrum_evolution,
-    plot_adaptive_frequencies,
 )
 
 _NTK_PLOT_DIR = os.path.join(OUTPUT_DIR, "ntk_plots")
@@ -48,14 +40,15 @@ class Trainer:
         sample = prepare_sample(quad, solution)
         self.data = DataModule(sample, batch_size=min(batch_size, len(quad.xy_in)))
 
-        if USE_CORNER:
-            corner_enrichment = build_corner_enrichment(domain, DEVICE)
-        else:
-            corner_enrichment = None
+        pinn_config = PINNConfig(**CURRENT_ARCHITECTURE_CONFIG)
 
         self.pinn = PINN(
-            corner_enrichment=corner_enrichment,
+            config=pinn_config,
+            domain=domain,
+            corner_enrichment=pinn_config.use_corner_enrichment,
         ).to(DEVICE)
+
+        self.pinn.plot_model_summary(os.path.join(OUTPUT_DIR, "model_summary.png"))
 
         self.opt_pinn = torch.optim.Adam(self.pinn.parameters(), lr=lr)
 
@@ -76,7 +69,7 @@ class Trainer:
 
     def train(self) -> None:
         self.logger.section(
-            f"Training PINN  (Loss: {LOSS_TYPE},  Epochs: {TRAIN_EPOCHS}."
+            f"Training PINN  (Loss: {LOSS_TYPE},  Epochs: {TRAIN_EPOCHS})."
         )
 
         self._run_ntk_analysis(0)
@@ -111,9 +104,7 @@ class Trainer:
                 loss_neu  = torch.tensor(0.0, device=DEVICE)
 
                 if LOSS_TYPE == "mse":
-
                     loss_pde = residual.pow(2).mean()
-
                     mask_sum = bc_mask.sum()
                     loss_dir = (diff_D ** 2 * bc_mask).sum() / (mask_sum + 1e-8)
 
@@ -181,18 +172,10 @@ class Trainer:
         N_all  = len(xy_all)
         n_pts  = min(NTK_ANALYSIS_POINTS, N_all)
 
-        self.logger(
-            f"  [NTK] Epoch {epoch}: {n_pts} точек "
-            f"(всего обучающих: {N_all})"
-        )
-
+        self.logger(f"  [NTK] Epoch {epoch}: {n_pts} точек (всего обучающих: {N_all})")
         result = plot_ntk_full_analysis(
-            model=self.pinn,
-            epoch=epoch,
-            X_train=xy_all,
-            n_pts=n_pts,
-            node_order=NTK_NODE_ORDER,
-            output_dir=_NTK_PLOT_DIR,
+            model=self.pinn, epoch=epoch, X_train=xy_all,
+            n_pts=n_pts, node_order=NTK_NODE_ORDER, output_dir=_NTK_PLOT_DIR,
         )
 
         self._ntk_history.append({
@@ -200,28 +183,16 @@ class Trainer:
             "eig_KL":   result["eig_KL"],
             "kappa_K":  result["kappa_K"],
             "kappa_KL": result["kappa_KL"],
-            "rank_K":   float(np.exp(-np.sum(
-                _norm_entropy(result["eig_K"])
-            ))),
-            "rank_KL":  float(np.exp(-np.sum(
-                _norm_entropy(result["eig_KL"])
-            ))),
+            "rank_K":   float(np.exp(-np.sum(_norm_entropy(result["eig_K"])))),
+            "rank_KL":  float(np.exp(-np.sum(_norm_entropy(result["eig_KL"])))),
         })
         self._ntk_epochs.append(epoch)
-
-        self.logger(
-            f"  [NTK] κ(K)={result['kappa_K']:.2e}  "
-            f"κ(K_L)={result['kappa_KL']:.2e}"
-        )
+        self.logger(f"  [NTK] κ(K)={result['kappa_K']:.2e}  κ(K_L)={result['kappa_KL']:.2e}")
 
     def _plot_final_reports(self) -> None:
         if len(self._ntk_history) >= 2:
             try:
-                plot_spectrum_evolution(
-                    self._ntk_history,
-                    self._ntk_epochs,
-                    output_dir=_NTK_PLOT_DIR,
-                )
+                plot_spectrum_evolution(self._ntk_history, self._ntk_epochs, output_dir=_NTK_PLOT_DIR)
                 self.logger("  [NTK] Сохранён график эволюции спектра")
             except Exception as exc:
                 self.logger(f"  [NTK] Ошибка эволюции спектра: {exc}")
