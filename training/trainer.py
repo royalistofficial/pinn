@@ -9,12 +9,8 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from config import (
     DEVICE, DEFAULT_LR, TRAIN_EPOCHS, BC_PENALTY, LOSS_TYPE, OUTPUT_DIR,
-    USE_ADAPTIVE_FREQ, ADAPTIVE_FREQ_POINTS,
     NTK_ANALYSIS_EVERY, NTK_ANALYSIS_POINTS, NTK_NODE_ORDER, USE_CORNER
 )
-from geometry.domains import BaseDomain
-from geometry.quadrature import QuadratureData
-from problems.solutions import AnalyticalSolution
 
 from networks.pinn import PINN
 from networks.corners import build_corner_enrichment
@@ -52,32 +48,17 @@ class Trainer:
         sample = prepare_sample(quad, solution)
         self.data = DataModule(sample, batch_size=min(batch_size, len(quad.xy_in)))
 
-        init_freqs = None
-        self._init_freqs_np = None
-        if USE_ADAPTIVE_FREQ:
-            try:
-                from config import PINN_ARCH
-                init_freqs = compute_adaptive_frequencies(
-                    solution, domain,
-                    n_fourier=PINN_ARCH["n_fourier"],
-                    n_points=ADAPTIVE_FREQ_POINTS,
-                )
-                self._init_freqs_np = init_freqs.numpy().copy()
-                logger(f"  [AdaptiveFreq] Инициализированы {len(init_freqs)} частот")
-            except Exception as e:
-                logger(f"  [AdaptiveFreq] Ошибка: {e}, используем стандартные")
-                init_freqs = None
-
         if USE_CORNER:
             corner_enrichment = build_corner_enrichment(domain, DEVICE)
         else:
             corner_enrichment = None
+
         self.pinn = PINN(
             corner_enrichment=corner_enrichment,
-            init_freqs=init_freqs,
         ).to(DEVICE)
 
         self.opt_pinn = torch.optim.Adam(self.pinn.parameters(), lr=lr)
+
         self.scheduler = ReduceLROnPlateau(
             self.opt_pinn, mode="min", factor=0.5,
             patience=50, threshold=1e-4, min_lr=1e-5,
@@ -95,8 +76,7 @@ class Trainer:
 
     def train(self) -> None:
         self.logger.section(
-            f"Training PINN  (Loss: {LOSS_TYPE},  Epochs: {TRAIN_EPOCHS},  "
-            f"AdaptiveFreq: {USE_ADAPTIVE_FREQ})"
+            f"Training PINN  (Loss: {LOSS_TYPE},  Epochs: {TRAIN_EPOCHS}."
         )
 
         self._run_ntk_analysis(0)
@@ -235,7 +215,6 @@ class Trainer:
         )
 
     def _plot_final_reports(self) -> None:
-
         if len(self._ntk_history) >= 2:
             try:
                 plot_spectrum_evolution(
@@ -246,23 +225,6 @@ class Trainer:
                 self.logger("  [NTK] Сохранён график эволюции спектра")
             except Exception as exc:
                 self.logger(f"  [NTK] Ошибка эволюции спектра: {exc}")
-
-        learned = extract_learned_frequencies(self.pinn)
-        if self._init_freqs_np is not None and len(learned) > 0:
-            try:
-                spectrum_info = None
-                if USE_ADAPTIVE_FREQ:
-                    from networks.freq_init import estimate_rhs_spectrum
-                    spectrum_info = estimate_rhs_spectrum(
-                        self.solution, self.domain)
-                plot_adaptive_frequencies(
-                    self._init_freqs_np, learned,
-                    spectrum_info=spectrum_info,
-                    output_dir=_NTK_PLOT_DIR,
-                )
-                self.logger("  [NTK] Сохранён график адаптивных частот")
-            except Exception as exc:
-                self.logger(f"  [NTK] Ошибка графика частот: {exc}")
 
 def _norm_entropy(eig: np.ndarray) -> np.ndarray:
     ep = eig[eig > 1e-10]

@@ -172,8 +172,6 @@ def plot_ntk_full_analysis(
         output_dir: str = "data/ntk_plots",
         node_order: str = "hilbert",
 
-        n_vis: int = 0,
-        n_spectrum: int = 0,
     ) -> dict:
     os.makedirs(output_dir, exist_ok=True)
     device = next(model.parameters()).device
