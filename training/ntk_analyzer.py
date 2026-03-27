@@ -18,10 +18,8 @@ from networks.ntk_utils import (
     _compute_effective_rank,
 )
 from visualization.ntk_plots import (
-    plot_ntk_pde,
-    plot_ntk_full,
-    plot_ntk_spectrum_analysis,
-    plot_spectrum_evolution,
+    plot_ntk_combined,
+    plot_ntk_evolution,
 )
 from training.convergence_prediction import (
     ConvergencePrediction,
@@ -124,36 +122,9 @@ class NTKAnalyzer:
 
         self.logger(f"[NTK] Points: interior={n_in}, boundary={n_bd}")
 
-        self.logger("[NTK] 1/3: PDE NTK analysis...")
+        self.logger("[NTK] Выполняется объединённый NTK анализ...")
 
-        xy_D, xy_N = None, None
-        normals_D, normals_N = None, None
-
-        if X_boundary is not None and len(X_boundary) > 0 and bc_mask is not None:
-            X_bd = self._subsample(X_boundary.to(device), self.n_boundary)
-            normals_sub = self._subsample(normals.to(device), self.n_boundary) if normals is not None else None
-            bc_mask_sub = self._subsample(bc_mask.to(device), self.n_boundary)
-
-            xy_D, xy_N, idx_D, idx_N = split_boundary_points(X_bd, bc_mask_sub)
-
-            if normals_sub is not None:
-                normals_D = normals_sub[idx_D] if len(idx_D) > 0 else None
-                normals_N = normals_sub[idx_N] if len(idx_N) > 0 else None
-
-        result_pde = plot_ntk_pde(
-            model=self.model,
-            epoch=epoch,
-            X_interior=X_interior,
-            X_dirichlet=xy_D,
-            X_neumann=xy_N,
-            normals_neumann=normals_N,
-            n_pts=self.n_interior,
-            output_dir=self.output_dir,
-            node_order=self.node_order,
-        )
-
-        self.logger("[NTK] 2/3: Full matrix analysis...")
-        result_full = plot_ntk_full(
+        result_combined = plot_ntk_combined(
             model=self.model,
             epoch=epoch,
             X_interior=X_interior,
@@ -163,30 +134,18 @@ class NTKAnalyzer:
             n_interior=self.n_interior,
             n_boundary=self.n_boundary,
             output_dir=self.output_dir,
+            learning_rate=self.learning_rate,
         )
 
-        self.logger("[NTK] 3/3: Spectrum analysis...")
-        result_spectrum = plot_ntk_spectrum_analysis(
-            model=self.model,
-            epoch=epoch,
-            X_interior=X_interior,
-            X_boundary=X_boundary,
-            normals=normals,
-            bc_mask=bc_mask,
-            n_interior=self.n_interior,
-            n_boundary=self.n_boundary,
-            output_dir=self.output_dir,
-        )
+        eig_K = result_combined["eigenvalues_K"]
+        eig_KL = result_combined["eigenvalues_KL"]
+        eig_D = result_combined.get("dirichlet", {}).get("eigenvalues") if result_combined.get("dirichlet") else None
+        eig_N = result_combined.get("neumann", {}).get("eigenvalues") if result_combined.get("neumann") else None
 
-        eig_K = result_full["eigenvalues_K"]
-        eig_KL = result_full["eigenvalues_KL"]
-        eig_D = result_full.get("dirichlet", {}).get("eigenvalues") if result_full.get("dirichlet") else None
-        eig_N = result_full.get("neumann", {}).get("eigenvalues") if result_full.get("neumann") else None
-
-        kappa_K = result_full["condition_number_K"]
-        kappa_KL = result_full["condition_number_KL"]
-        rank_K = result_full["effective_rank_K"]
-        rank_KL = result_full["effective_rank_KL"]
+        kappa_K = result_combined["condition_number_K"]
+        kappa_KL = result_combined["condition_number_KL"]
+        rank_K = result_combined["effective_rank_K"]
+        rank_KL = result_combined["effective_rank_KL"]
 
         kappa_ratio = kappa_KL / kappa_K if kappa_K > 0 and kappa_K < float("inf") else float("inf")
         rank_ratio = rank_KL / rank_K if rank_K > 0 else 0.0
@@ -238,19 +197,19 @@ class NTKAnalyzer:
 
         result = NTKResult(
             epoch=epoch,
-            eigenvalues_KL=result_pde["eigenvalues"],
-            condition_number_KL=result_pde["condition_number"],
-            effective_rank_KL=result_pde["effective_rank"],
-            trace_KL=result_pde["trace"],
-            eigenvalues_K=result_full["eigenvalues_K"],
-            condition_number_K=result_full["condition_number_K"],
-            effective_rank_K=result_full["effective_rank_K"],
-            trace_K=result_full["trace_K"],
-            dirichlet=result_full.get("dirichlet"),
-            neumann=result_full.get("neumann"),
+            eigenvalues_KL=result_combined["eigenvalues_KL"],
+            condition_number_KL=result_combined["condition_number_KL"],
+            effective_rank_KL=result_combined["effective_rank_KL"],
+            trace_KL=result_combined["trace_KL"],
+            eigenvalues_K=result_combined["eigenvalues_K"],
+            condition_number_K=result_combined["condition_number_K"],
+            effective_rank_K=result_combined["effective_rank_K"],
+            trace_K=result_combined["trace_K"],
+            dirichlet=result_combined.get("dirichlet"),
+            neumann=result_combined.get("neumann"),
             n_interior=n_in,
-            n_dirichlet=result_full.get("n_dirichlet", 0),
-            n_neumann=result_full.get("n_neumann", 0),
+            n_dirichlet=result_combined.get("n_dirichlet", 0),
+            n_neumann=result_combined.get("n_neumann", 0),
             kappa_ratio=kappa_ratio,
             rank_ratio=rank_ratio,
             health_score=health_score,
@@ -313,7 +272,7 @@ class NTKAnalyzer:
             }
             spectra_history.append(sp)
 
-        plot_spectrum_evolution(
+        plot_ntk_evolution(
             spectra_history=spectra_history,
             epochs=self.epochs,
             output_dir=self.output_dir,
@@ -354,7 +313,7 @@ class NTKAnalyzer:
                 f"(bottleneck: {result.convergence_prediction.bottleneck_component})"
             )
 
-        self.logger(f"[NTK] Saved 3 visualization files to {self.output_dir}")
+        self.logger(f"[NTK] Сохранён объединённый график в {self.output_dir}")
 
     def _generate_convergence_report(
                 self,

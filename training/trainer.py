@@ -77,6 +77,8 @@ class Trainer:
             logger=logger,
             domain_name=domain_name,
             metrics_calculator=self.metrics_calculator,
+            weight_balancer=self.weight_balancer,
+            ntk_analyzer=self.ntk_analyzer,
         )
 
     def _compute_domain_diameter(self, domain) -> float:

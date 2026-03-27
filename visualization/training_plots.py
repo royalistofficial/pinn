@@ -18,6 +18,11 @@ COLORS = {
     "dir": "#DC2626",
     "neu": "#059669",
     "lr": "#D946EF",
+    "w_pde": "#3B82F6",       
+    "w_dirichlet": "#DC2626", 
+    "w_neumann": "#059669",   
+    "l2_pred": "#8B5CF6",     
+    "energy_pred": "#F59E0B", 
     "grid": "#E2E8F0",
     "bg": "#FAFBFC",
     "text": "#334155",
@@ -25,7 +30,7 @@ COLORS = {
 
 _STROKE = [pe.withStroke(linewidth=2.5, foreground="white")]
 
-def _ax_style(ax, title: str = "", xlabel: str = "Epoch", ylabel: str = ""):
+def _ax_style(ax, title: str = "", xlabel: str = "Эпоха", ylabel: str = ""):
     ax.set_facecolor(COLORS["bg"])
     ax.set_title(title, fontsize=12, fontweight="600", color=COLORS["text"], pad=10)
     ax.set_xlabel(xlabel, fontsize=9, color=COLORS["text"])
@@ -70,39 +75,83 @@ def plot_training_metrics(history: Dict, domain: str, path: str) -> None:
     ax = axes[0, 0]
     loss = history.get("loss", [])
     pde = history.get("pde", [])
-    ax.semilogy(epochs, loss, color=COLORS["loss"], lw=2, label="Total Loss")
+    ax.semilogy(epochs, loss, color=COLORS["loss"], lw=2, label="Общие потери")
     _annotate_last(ax, epochs, loss, COLORS["loss"], dy=8)
     if pde:
-        ax.semilogy(epochs, pde, color=COLORS["pde"], lw=1, alpha=0.4, ls="--", label="PDE")
+        ax.semilogy(epochs, pde, color=COLORS["pde"], lw=1, alpha=0.4, ls="--", label="ДУЧП")
         _annotate_last(ax, epochs, pde, COLORS["pde"], dy=-10)
-    _ax_style(ax, "Loss Function", ylabel="Loss")
+    _ax_style(ax, "Функция потерь", ylabel="Потери")
     ax.legend(fontsize=8)
 
     ax = axes[0, 1]
     energy = history.get("energy", [])
     if energy:
-        ax.semilogy(epochs, energy, color=COLORS["energy"], lw=2.2)
+        ax.semilogy(epochs, energy, color=COLORS["energy"], lw=2.2, label="Энергетическая ошибка")
         ax.fill_between(epochs, energy, alpha=0.08, color=COLORS["energy"])
         _annotate_last(ax, epochs, energy, COLORS["energy"])
-    _ax_style(ax, r"Energy Error $\|\nabla(u-v)\|^2$", ylabel="Error")
+
+    energy_pred = history.get("energy_pred", [])
+    if energy_pred:
+        ax.semilogy(epochs, energy_pred, color=COLORS["energy_pred"], lw=1.5, 
+                    ls="--", alpha=0.8, label="Априорный прогноз")
+        _annotate_last(ax, epochs, energy_pred, COLORS["energy_pred"], dy=-10)
+
+    _ax_style(ax, r"Энергетическая ошибка $\|\nabla(u-v)\|^2$", ylabel="Ошибка")
+    ax.legend(fontsize=8)
 
     ax = axes[1, 0]
     rel = history.get("rel_err", [])
     if rel:
-        ax.semilogy(epochs, rel, color=COLORS["rel_l2"], lw=2.2)
+        ax.semilogy(epochs, rel, color=COLORS["rel_l2"], lw=2.2, label=r"Относительная ошибка $L_2$")
         _annotate_last(ax, epochs, rel, COLORS["rel_l2"])
-    _ax_style(ax, r"Relative $L_2$ Error", ylabel="Error")
 
-    ax = axes[1, 1]
-    lr_vals = history.get("lr", [])
-    if lr_vals:
-        ax.semilogy(epochs, lr_vals, color=COLORS["lr"], lw=2.2, label="Learning Rate")
-        _annotate_last(ax, epochs, lr_vals, COLORS["lr"], fmt=".2e")
-    _ax_style(ax, "Learning Rate", ylabel="LR")
+    l2_pred = history.get("l2_pred", [])
+    if l2_pred:
+        ax.semilogy(epochs, l2_pred, color=COLORS["l2_pred"], lw=1.5,
+                    ls="--", alpha=0.8, label="Априорный прогноз")
+        _annotate_last(ax, epochs, l2_pred, COLORS["l2_pred"], dy=-10)
+
+    _ax_style(ax, r"Относительная ошибка $L_2$", ylabel="Ошибка")
     ax.legend(fontsize=8)
 
+    ax = axes[1, 1]
+    w_pde = history.get("w_pde", [])
+    w_dirichlet = history.get("w_dirichlet", [])
+    w_neumann = history.get("w_neumann", [])
+
+    if w_pde:
+        ax.plot(epochs, w_pde, color=COLORS["w_pde"], lw=2, label=r"$w_{ДУЧП}$", marker="o", 
+                markersize=3, markevery=max(1, len(epochs)//20))
+        _annotate_last(ax, epochs, w_pde, COLORS["w_pde"], fmt=".2f", dy=8)
+    if w_dirichlet:
+        ax.plot(epochs, w_dirichlet, color=COLORS["w_dirichlet"], lw=2, label=r"$w_{Дирихле}$", 
+                marker="s", markersize=3, markevery=max(1, len(epochs)//20))
+        _annotate_last(ax, epochs, w_dirichlet, COLORS["w_dirichlet"], fmt=".2f", dy=-8)
+    if w_neumann:
+        ax.plot(epochs, w_neumann, color=COLORS["w_neumann"], lw=2, label=r"$w_{Нейман}$", 
+                marker="^", markersize=3, markevery=max(1, len(epochs)//20))
+        _annotate_last(ax, epochs, w_neumann, COLORS["w_neumann"], fmt=".2f", dy=8)
+
+    if w_pde or w_dirichlet or w_neumann:
+        ax.set_ylim(bottom=0, top=max(
+            max(w_pde) if w_pde else 1,
+            max(w_dirichlet) if w_dirichlet else 1,
+            max(w_neumann) if w_neumann else 1
+        ) * 1.2)
+
+    _ax_style(ax, "Вклады весов функции потерь", ylabel="Вес")
+    ax.legend(fontsize=8)
+
+    if w_pde and w_dirichlet:
+        weights_text = f"Текущие: ДУЧП={w_pde[-1]:.2f}, Дир={w_dirichlet[-1]:.2f}"
+        if w_neumann:
+            weights_text += f", Нейм={w_neumann[-1]:.2f}"
+        ax.text(0.02, 0.98, weights_text, transform=ax.transAxes, fontsize=8,
+                verticalalignment='top', color=COLORS["text"],
+                bbox=dict(boxstyle='round', facecolor=COLORS["bg"], alpha=0.8))
+
     fig.suptitle(
-        f"PINN Training Metrics ({domain})",
+        f"Метрики обучения PINN ({domain})",
         fontsize=14, fontweight="700", color=COLORS["text"], y=1.01
     )
     _save_fig(fig, path)
@@ -143,10 +192,10 @@ def plot_solution_fields(
     fig, axes = plt.subplots(2, 2, figsize=(12, 12))
 
     panels = [
-        (v, f"v (Epoch {epoch})", "viridis", False),
-        (u_exact, "Exact Solution u", "viridis", False),
-        (abs_error, "Absolute Error |u - v|", "turbo", False),
-        (energy_density, r"Energy Error $|\nabla e|^2$", "turbo", True),
+        (v, f"Решение v (Эпоха {epoch})", "viridis", False),
+        (u_exact, "Точное решение u", "viridis", False),
+        (abs_error, "Абсолютная ошибка |u - v|", "turbo", False),
+        (energy_density, r"Энергетическая ошибка $|\nabla e|^2$", "turbo", True),
     ]
 
     for ax, (vals, title, cmap, cz) in zip(axes.flat, panels):

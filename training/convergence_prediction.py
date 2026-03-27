@@ -172,14 +172,44 @@ def compute_convergence_prediction(
 
     epochs_pred = np.array([0, 100, 500, 1000, 2000, 5000, 10000, 20000, 50000])
 
-    def predict_loss(eig: np.ndarray, epochs: np.ndarray, lr: float, L0: float) -> np.ndarray:
+    def predict_loss(eig: np.ndarray, epochs: np.ndarray, lr: float, L0: float,
+                     ntk_factor: float = 0.7, floor: float = 1e-10) -> np.ndarray:
         eig_pos = eig[eig > 1e-12]
         if len(eig_pos) == 0:
             return np.ones_like(epochs) * L0
 
-        n = min(len(eig_pos), 10)
-        lambda_eff = n / np.sum(1.0 / eig_pos[:n])
-        return L0 * np.exp(-2 * lambda_eff * lr * epochs)
+        lambda_max = float(eig_pos[0])
+        lambda_min = float(eig_pos[-1])
+
+        n_top = min(len(eig_pos), 10)
+        lambda_eff = n_top / np.sum(1.0 / eig_pos[:n_top])
+
+        n_sustained = min(len(eig_pos), 20)
+        weights = np.exp(-np.arange(n_sustained) * 0.2)
+        weights = weights / weights.sum()
+        lambda_sustained = 1.0 / np.sum(weights / eig_pos[:n_sustained])
+
+        spectral_gap = float(eig_pos[1] / eig_pos[0]) if len(eig_pos) > 1 else 0.1
+        transition_time = max(500.0, 100.0 / (spectral_gap + 0.01))
+
+        loss_pred = np.zeros_like(epochs, dtype=float)
+
+        for i, t in enumerate(epochs):
+            if i == 0:
+                loss_pred[i] = L0
+            else:
+                dt = epochs[i] - epochs[i-1]
+
+                progress = 1 - np.exp(-epochs[i] / transition_time)
+                lambda_t = lambda_eff * (1 - progress) + lambda_sustained * progress
+
+                lambda_corrected = lambda_t * ntk_factor
+
+                decay = np.exp(-2 * lambda_corrected * lr * dt)
+                loss_pred[i] = loss_pred[i-1] * decay
+
+        loss_pred = np.maximum(loss_pred, floor)
+        return loss_pred
 
     predicted_loss_pde = predict_loss(eigenvalues_KL, epochs_pred, learning_rate, initial_loss * 0.7)
 
@@ -595,28 +625,66 @@ def predict_error_evolution(
         epochs: np.ndarray,
         poincare_constant: float,
         stability_constant: float,
+        ntk_evolution_factor: float = 0.7,
+        numerical_tolerance: float = 1e-10,
     ) -> ErrorBounds:
     eig_pos = eigenvalues_KL[eigenvalues_KL > 1e-12]
 
     if len(eig_pos) == 0:
         return ErrorBounds(
-            l2_error_predicted=np.zeros_like(epochs, dtype=float),
+            l2_error_predicted=np.ones_like(epochs, dtype=float) * residual_norm_init,
             l2_error_upper_bound=float('inf'),
-            energy_error_predicted=np.zeros_like(epochs, dtype=float),
+            energy_error_predicted=np.ones_like(epochs, dtype=float) * residual_norm_init,
             energy_error_upper_bound=float('inf'),
             poincare_constant=poincare_constant,
             stability_constant=stability_constant,
             residual_norm_init=residual_norm_init,
         )
 
-    n = min(len(eig_pos), 10)
-    lambda_eff = n / np.sum(1.0 / eig_pos[:n])
+    lambda_max = float(eig_pos[0])
+    lambda_min = float(eig_pos[-1])
 
-    residual_pred = residual_norm_init * np.exp(-2 * lambda_eff * learning_rate * epochs)
+    n_top = min(len(eig_pos), 10)
+    lambda_eff = n_top / np.sum(1.0 / eig_pos[:n_top])
+
+    kappa = lambda_max / (lambda_min + 1e-30)
+
+    spectral_gap = float(eig_pos[1] / eig_pos[0]) if len(eig_pos) > 1 else 0.1
+
+    n_sustained = min(len(eig_pos), 20)
+    weights = np.exp(-np.arange(n_sustained) * 0.2)  
+    weights = weights / weights.sum()
+    lambda_sustained = 1.0 / np.sum(weights / eig_pos[:n_sustained])
+
+    transition_time = max(500.0, 100.0 / (spectral_gap + 0.01))
+
+    def get_effective_lambda(t):
+        progress = 1 - np.exp(-t / transition_time)
+
+        return lambda_eff * (1 - progress) + lambda_sustained * progress
+
+    residual_pred = np.zeros_like(epochs, dtype=float)
+
+    for i, t in enumerate(epochs):
+        if i == 0:
+            residual_pred[i] = residual_norm_init
+        else:
+            dt = epochs[i] - epochs[i-1]
+
+            lambda_t = get_effective_lambda(epochs[i])
+
+            lambda_corrected = lambda_t * ntk_evolution_factor
+
+            decay = np.exp(-2 * lambda_corrected * learning_rate * dt)
+            residual_pred[i] = residual_pred[i-1] * decay
+
+    residual_pred = np.maximum(residual_pred, numerical_tolerance)
 
     l2_error_pred = poincare_constant * residual_pred
+    l2_error_pred = np.maximum(l2_error_pred, numerical_tolerance)
 
     energy_error_pred = stability_constant * residual_pred
+    energy_error_pred = np.maximum(energy_error_pred, numerical_tolerance)
 
     return ErrorBounds(
         l2_error_predicted=l2_error_pred,
