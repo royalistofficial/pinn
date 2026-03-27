@@ -34,7 +34,7 @@ class SIREN(nn.Module):
 
         for i in range(n_layers):
             is_first = (i == 0)
-            w0 = self.w0 if is_first else 1.0 
+            w0 = self.w0
 
             self.net.add_module(f"siren_{i}", SirenLayer(in_dim, hidden_dim, w0=w0, is_first=is_first))
             in_dim = hidden_dim

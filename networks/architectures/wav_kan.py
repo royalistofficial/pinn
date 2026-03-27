@@ -12,7 +12,7 @@ class WavKANLayer(nn.Module):
         self.residual = residual and (in_dim == out_dim)
 
         self.translation = nn.Parameter(torch.zeros(in_dim, num_wavelets))
-        self.scale = nn.Parameter(torch.ones(in_dim, num_wavelets))
+        self.scale = nn.Parameter(torch.zeros(in_dim, num_wavelets))
 
         self.weights = nn.Parameter(torch.empty(out_dim, in_dim, num_wavelets))
         nn.init.normal_(self.weights, std=0.1)
@@ -28,7 +28,7 @@ class WavKANLayer(nn.Module):
 
         x_u = x.unsqueeze(-1) 
 
-        x_norm = (x_u - self.translation) / (self.scale + 1e-8)
+        x_norm = (x_u - self.translation) / (self.scale.exp() + 1e-8)
 
         wav = self.mexican_hat(x_norm) 
 

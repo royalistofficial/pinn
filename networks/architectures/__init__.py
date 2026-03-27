@@ -5,7 +5,7 @@ from .kan_pinn import ScaledCPIKAN, ChebyKANLayer
 from .pi_dbsn import PIDBSN
 from .rbf_kan import RBFKAN
 from .wav_kan import WavKAN
-from .enrichment import CornerEnrichment, build_corner_enrichment, extract_corners
+from .enrichment import GeometryEnrichment, build_enrichment, extract_geometry
 
 __all__ = [
     "MLP",
@@ -17,9 +17,9 @@ __all__ = [
     "PIDBSN",
     "RBFKAN",
     "WavKAN",
-    "CornerEnrichment",
-    "build_corner_enrichment",
-    "extract_corners",
+    "GeometryEnrichment",
+    "build_enrichment",
+    "extract_geometry",
     "KAN_CONFIG",
     "MLP_CONFIG",
     "SIREN_CONFIG",
@@ -47,7 +47,7 @@ SIREN_CONFIG = {
     "hidden_dim": 32,
     "n_layers": 3,
     "use_corner_enrichment": False,
-    "siren_w0": 30.0,
+    "siren_w0": 20.0,
 }
 
 FOURIER_CONFIG = {
@@ -106,4 +106,4 @@ WAV_KAN_CONFIG = {
     "use_corner_enrichment": False,
 }
 
-CURRENT_ARCHITECTURE_CONFIG = WAV_KAN_CONFIG
+CURRENT_ARCHITECTURE_CONFIG = MLP_CONFIG

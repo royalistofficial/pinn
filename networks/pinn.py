@@ -9,8 +9,8 @@ import torch.nn as nn
 import matplotlib.pyplot as plt
 
 from networks.architectures import (
-    CornerEnrichment, 
-    build_corner_enrichment,
+    GeometryEnrichment, 
+    build_enrichment,
     ScaledCPIKAN,
     PIDBSN,
     RBFKAN,
@@ -61,7 +61,7 @@ class PINNFactory:
             "wav-kan": WavKAN,
         }
 
-    def build_core_model(self, corner_enrichment: Optional[CornerEnrichment] = None) -> nn.Module:
+    def build_core_model(self, corner_enrichment: Optional[GeometryEnrichment] = None) -> nn.Module:
         arch_name = self.config.architecture.lower()
         if arch_name not in self._registry:
             raise ValueError(f"Архитектура '{arch_name}' не поддерживается. Доступны: {list(self._registry.keys())}")
@@ -75,7 +75,7 @@ class PINN(nn.Module):
         self,
         config: PINNConfig,
         domain=None,
-        corner_enrichment: Union[bool, CornerEnrichment] = False,
+        corner_enrichment: Union[bool, GeometryEnrichment] = False,
     ):
         super().__init__()
         self.config = copy.deepcopy(config)
@@ -83,8 +83,8 @@ class PINN(nn.Module):
         if isinstance(corner_enrichment, bool):
             if corner_enrichment:
                 if domain is None:
-                    raise ValueError("Для автоматической сборки CornerEnrichment необходимо передать объект domain.")
-                self.corner_enrichment = build_corner_enrichment(domain, torch.device("cpu"))
+                    raise ValueError("Для автоматической сборки GeometryEnrichment необходимо передать объект domain.")
+                self.corner_enrichment = build_enrichment(domain, torch.device("cpu"))
             else:
                 self.corner_enrichment = None
         else:
