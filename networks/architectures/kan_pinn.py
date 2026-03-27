@@ -1,5 +1,4 @@
 import math
-from typing import Optional
 import torch
 import torch.nn as nn
 
@@ -9,6 +8,7 @@ class ChebyKANLayer(nn.Module):
         self.in_dim = in_dim
         self.out_dim = out_dim
         self.degree = degree
+
         self.residual = residual and (in_dim == out_dim)
 
         std = 1.0 / math.sqrt(in_dim * (degree + 1))
@@ -22,6 +22,7 @@ class ChebyKANLayer(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         batch = x.shape[0]
+
         xc = x.clamp(-1.0 + 1e-6, 1.0 - 1e-6)   
 
         T = [torch.ones(batch, self.in_dim, dtype=x.dtype, device=x.device), xc]
@@ -39,10 +40,18 @@ class ChebyKANLayer(nn.Module):
         return y
 
 class ScaledCPIKAN(nn.Module):
-    def __init__(self, out_dim: int, hidden: int = 64, n_layers: int = 4, degree: int = 5, in_dim: int = 2):
+    def __init__(self, config):
         super().__init__()
+
+        in_dim = getattr(config, 'in_dim', 2)
+        out_dim = getattr(config, 'out_dim', 1)
+        hidden = getattr(config, 'hidden_dim', 64)
+        n_layers = getattr(config, 'n_layers', 4)
+        degree = getattr(config, 'kan_degree', 5)
+
         self.layers = nn.ModuleList()
         self.layers.append(ChebyKANLayer(in_dim, hidden, degree, residual=False))
+
         for _ in range(n_layers - 1):
             self.layers.append(ChebyKANLayer(hidden, hidden, degree, residual=True))
 
@@ -51,22 +60,7 @@ class ScaledCPIKAN(nn.Module):
         nn.init.zeros_(self.head.bias)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        h = 0.95 * x 
+        h = 0.95 * x  
         for layer in self.layers:
             h = layer(h)
         return self.head(h)
-
-class KANPINN(nn.Module):
-    def __init__(self, config):
-        super().__init__()
-        degree = getattr(config, 'kan_degree', 5)
-        self.net = ScaledCPIKAN(
-            out_dim=config.out_dim,
-            hidden=config.hidden_dim,
-            n_layers=config.n_layers,
-            degree=degree,
-            in_dim=config.in_dim
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.net(x)

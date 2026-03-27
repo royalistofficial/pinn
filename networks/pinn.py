@@ -1,5 +1,6 @@
 from __future__ import annotations
 import os
+import copy
 from dataclasses import dataclass
 from typing import Dict, Optional, Type, Union
 
@@ -11,6 +12,9 @@ from networks.architectures import (
     CornerEnrichment, 
     build_corner_enrichment,
     ScaledCPIKAN,
+    PIDBSN,
+    RBFKAN,
+    WavKAN,
     MLP,
     SIREN,
     FourierNet
@@ -18,21 +22,30 @@ from networks.architectures import (
 
 @dataclass
 class PINNConfig:
-    architecture: str = "kan"
+    architecture: str = "mlp"
     in_dim: int = 2
     out_dim: int = 1
     hidden_dim: int = 64
     n_layers: int = 4
     activation: str = "tanh"
-    use_corner_enrichment: bool = True
+    use_corner_enrichment: bool = False
 
     siren_w0: float = 30.0
+
     fourier_features: int = 256
     fourier_sigma: float = 10.0
     freq_min: float = 0.5
     freq_max: float = 10.0
+    trainable_freqs: bool = False
+
     kan_degree: int = 5
-    n_fourier: int = 0
+
+    dbsn_grid_size: int = 5
+    dbsn_spline_order: int = 3
+
+    num_rbf_centers: int = 5
+
+    num_wavelets: int = 5
 
 class PINNFactory:
     def __init__(self, config: PINNConfig):
@@ -43,6 +56,9 @@ class PINNFactory:
             "mlp": MLP,
             "siren": SIREN,
             "fourier": FourierNet,
+            "pi-dbsn": PIDBSN,
+            "rbf-kan": RBFKAN,
+            "wav-kan": WavKAN,
         }
 
     def build_core_model(self, corner_enrichment: Optional[CornerEnrichment] = None) -> nn.Module:
@@ -52,20 +68,7 @@ class PINNFactory:
 
         ModelClass = self._registry[arch_name]
 
-        if arch_name == "kan":
-            return ModelClass(
-                out_dim=self.config.out_dim,
-                hidden=self.config.hidden_dim,
-                n_layers=self.config.n_layers,
-                degree=self.config.kan_degree,
-                n_fourier=self.config.n_fourier,
-                freq_min=self.config.freq_min,
-                freq_max=self.config.freq_max,
-                corner_enrichment=corner_enrichment
-            )
-        else:
-
-            return ModelClass(self.config)
+        return ModelClass(self.config)
 
 class PINN(nn.Module):
     def __init__(
@@ -75,7 +78,7 @@ class PINN(nn.Module):
         corner_enrichment: Union[bool, CornerEnrichment] = False,
     ):
         super().__init__()
-        self.config = config
+        self.config = copy.deepcopy(config)
 
         if isinstance(corner_enrichment, bool):
             if corner_enrichment:
@@ -86,6 +89,15 @@ class PINN(nn.Module):
                 self.corner_enrichment = None
         else:
             self.corner_enrichment = corner_enrichment
+
+        actual_in_dim = self.config.in_dim
+        if self.config.architecture != "kan" and self.corner_enrichment is not None:
+            dummy_x = torch.zeros(1, self.config.in_dim)
+            with torch.no_grad():
+                c_feat = self.corner_enrichment(dummy_x)
+            actual_in_dim += c_feat.shape[-1]
+
+        self.config.in_dim = actual_in_dim
 
         self.factory = PINNFactory(self.config)
         self.model = self.factory.build_core_model(corner_enrichment=self.corner_enrichment)
@@ -99,7 +111,6 @@ class PINN(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-
         if self.config.architecture != "kan" and self.corner_enrichment is not None:
             c_feat = self.corner_enrichment(x)
             x = torch.cat([x, c_feat], dim=-1)
@@ -107,40 +118,75 @@ class PINN(nn.Module):
         return self.model(x)
 
     def plot_model_summary(self, save_path: str = "data/model_summary.png"):
+        import os
+        import matplotlib.pyplot as plt
+        import torch.nn as nn
+
         total_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
         layers_info = []
 
         for name, module in self.named_modules():
-            if module is self or isinstance(module, (nn.Sequential, nn.ModuleList)):
+            if module is self:
                 continue
 
             params = sum(p.numel() for p in module.parameters(recurse=False) if p.requires_grad)
-            if params > 0 or "enrichment" in name.lower() or "activation" in module.__class__.__name__.lower():
-                layer_name = name if name else "core_layer"
-                param_str = f"({params:,} params)" if params > 0 else "(0 params)"
-                layers_info.append(f" ├─ {layer_name}: {module.__class__.__name__} {param_str}")
+            depth = name.count('.')
+            indent = "    " * depth
+            branch = "├── " if depth > 0 else "■ "
 
-        fig_height = max(4.0, len(layers_info) * 0.35 + 3.0)
-        fig, ax = plt.subplots(figsize=(8, fig_height))
+            layer_short_name = name.split('.')[-1] if name else "core"
+            class_name = module.__class__.__name__
+
+            extras = []
+            if params > 0:
+                extras.append(f"Weights: {params:,}")
+
+            if hasattr(module, 'residual') and module.residual:
+                extras.append("(+) Residual (+x)")
+            if hasattr(module, 'res_scale'): 
+                extras.append("(+) Learnable Skip-Conn")
+
+            if hasattr(module, 'base_activation'):
+                act_name = module.base_activation.__class__.__name__
+                extras.append(f"Base Act: {act_name}")
+
+            if hasattr(module, 'w0'):
+                extras.append(f"w0={module.w0}")
+                if getattr(module, 'is_first', False):
+                    extras.append("First Layer (Sine)")
+                else:
+                    extras.append("Sine Act")
+
+            if isinstance(module, (nn.Tanh, nn.SiLU, nn.GELU, nn.ReLU)):
+                extras.append("f(x) Activation")
+
+            is_container = isinstance(module, (nn.Sequential, nn.ModuleList))
+
+            if params > 0 or extras or is_container or "enrichment" in name.lower():
+                extra_str = f" [{', '.join(extras)}]" if extras else ""
+
+                line = f"{indent}{branch}{layer_short_name} ({class_name}){extra_str}"
+                layers_info.append(line)
+
+        fig_height = max(5.0, len(layers_info) * 0.28 + 3.0)
+        fig, ax = plt.subplots(figsize=(10, fig_height))
         ax.axis('off')
 
-        text_str =  f"[*] PINN Model Summary\n"
-        text_str += f"══════════════════════════════════════════════════\n"
-        text_str += f" Architecture   : {self.config.architecture.upper()}\n"
-        text_str += f" Output Dim     : {self.config.out_dim}\n"
-        text_str += f" Enrichment     : {'Active' if self.corner_enrichment else 'Disabled'}\n"
+        text_str =  f"[*] PINN Architecture & Data Flow\n"
+        text_str += f"════════════════════════════════════════════════════════════════\n"
+        text_str += f" Model Type     : {self.config.architecture.upper()}\n"
         text_str += f" Total Params   : {total_params:,}\n"
-        text_str += f"══════════════════════════════════════════════════\n\n"
-        text_str += " Layer Structure:\n"
+        text_str += f" Corner Features: {'Enabled' if getattr(self, 'corner_enrichment', None) else 'Disabled'}\n"
+        text_str += f"════════════════════════════════════════════════════════════════\n\n"
+        text_str += " Structure:\n"
         text_str += "\n".join(layers_info)
 
-        ax.text(0.05, 0.95, text_str, transform=ax.transAxes, fontsize=10,
+        ax.text(0.02, 0.98, text_str, transform=ax.transAxes, fontsize=10,
                 verticalalignment='top', fontfamily='monospace', 
-                bbox=dict(boxstyle='round4,pad=1', facecolor='#f8f9fa', 
-                          edgecolor='#ced4da', linewidth=2, alpha=0.95))
+                bbox=dict(boxstyle='round4,pad=1', facecolor='#1e1e2e', edgecolor='#89b4fa', linewidth=2, alpha=0.95), color='#cdd6f4')
 
         os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
         plt.tight_layout()
-        plt.savefig(save_path, dpi=150, bbox_inches='tight', facecolor='white')
+        plt.savefig(save_path, dpi=150, bbox_inches='tight', facecolor='#f1f3f5')
         plt.close()
-        print(f"[{self.__class__.__name__}] Информативная сводка модели сохранена в: {save_path}")
+        print(f"[{self.__class__.__name__}] Расширенная сводка модели сохранена в: {save_path}")
