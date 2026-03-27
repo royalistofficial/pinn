@@ -9,8 +9,6 @@ import torch.nn as nn
 import matplotlib.pyplot as plt
 
 from networks.architectures import (
-    GeometryEnrichment, 
-    build_enrichment,
     ScaledCPIKAN,
     PIDBSN,
     RBFKAN,
@@ -28,7 +26,6 @@ class PINNConfig:
     hidden_dim: int = 64
     n_layers: int = 4
     activation: str = "tanh"
-    use_corner_enrichment: bool = False
 
     siren_w0: float = 30.0
 
@@ -61,7 +58,7 @@ class PINNFactory:
             "wav-kan": WavKAN,
         }
 
-    def build_core_model(self, corner_enrichment: Optional[GeometryEnrichment] = None) -> nn.Module:
+    def build_core_model(self) -> nn.Module:
         arch_name = self.config.architecture.lower()
         if arch_name not in self._registry:
             raise ValueError(f"Архитектура '{arch_name}' не поддерживается. Доступны: {list(self._registry.keys())}")
@@ -74,47 +71,22 @@ class PINN(nn.Module):
     def __init__(
         self,
         config: PINNConfig,
-        domain=None,
-        corner_enrichment: Union[bool, GeometryEnrichment] = False,
     ):
         super().__init__()
         self.config = copy.deepcopy(config)
 
-        if isinstance(corner_enrichment, bool):
-            if corner_enrichment:
-                if domain is None:
-                    raise ValueError("Для автоматической сборки GeometryEnrichment необходимо передать объект domain.")
-                self.corner_enrichment = build_enrichment(domain, torch.device("cpu"))
-            else:
-                self.corner_enrichment = None
-        else:
-            self.corner_enrichment = corner_enrichment
-
         actual_in_dim = self.config.in_dim
-        if self.config.architecture != "kan" and self.corner_enrichment is not None:
-            dummy_x = torch.zeros(1, self.config.in_dim)
-            with torch.no_grad():
-                c_feat = self.corner_enrichment(dummy_x)
-            actual_in_dim += c_feat.shape[-1]
-
-        self.config.in_dim = actual_in_dim
 
         self.factory = PINNFactory(self.config)
-        self.model = self.factory.build_core_model(corner_enrichment=self.corner_enrichment)
+        self.model = self.factory.build_core_model()
 
         total_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
-        enrichment_status = 'Active' if self.corner_enrichment is not None else 'Disabled'
         print(
             f"[{self.__class__.__name__} | {self.config.architecture.upper()}] "
-            f"{total_params:,} trainable params | "
-            f"Corner Enrichment: {enrichment_status}"
+            f"{total_params:,} trainable params |"
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        if self.config.architecture != "kan" and self.corner_enrichment is not None:
-            c_feat = self.corner_enrichment(x)
-            x = torch.cat([x, c_feat], dim=-1)
-
         return self.model(x)
 
     def plot_model_summary(self, save_path: str = "data/model_summary.png"):
@@ -176,7 +148,6 @@ class PINN(nn.Module):
         text_str += f"════════════════════════════════════════════════════════════════\n"
         text_str += f" Model Type     : {self.config.architecture.upper()}\n"
         text_str += f" Total Params   : {total_params:,}\n"
-        text_str += f" Corner Features: {'Enabled' if getattr(self, 'corner_enrichment', None) else 'Disabled'}\n"
         text_str += f"════════════════════════════════════════════════════════════════\n\n"
         text_str += " Structure:\n"
         text_str += "\n".join(layers_info)

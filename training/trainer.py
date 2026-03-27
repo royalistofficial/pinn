@@ -44,8 +44,6 @@ class Trainer:
 
         self.pinn = PINN(
             config=pinn_config,
-            domain=domain,
-            corner_enrichment=pinn_config.use_corner_enrichment,
         ).to(DEVICE)
 
         self.pinn.plot_model_summary(os.path.join(OUTPUT_DIR, "model_summary.png"))
