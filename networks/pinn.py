@@ -1,13 +1,13 @@
 from __future__ import annotations
 import os
 import copy
-from dataclasses import dataclass
-from typing import Dict, Optional, Type, Union
+from typing import Dict, Type, Optional
 
 import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
 
+from networks.configs import NetworkConfig
 from networks.architectures import (
     ScaledCPIKAN,
     PIDBSN,
@@ -18,90 +18,74 @@ from networks.architectures import (
     FourierNet
 )
 
-@dataclass
-class PINNConfig:
-    architecture: str = "mlp"
-    in_dim: int = 2
-    out_dim: int = 1
-    hidden_dim: int = 64
-    n_layers: int = 4
-    activation: str = "tanh"
-
-    siren_w0: float = 30.0
-
-    fourier_features: int = 256
-    fourier_sigma: float = 10.0
-    freq_min: float = 0.5
-    freq_max: float = 10.0
-    trainable_freqs: bool = False
-
-    kan_degree: int = 5
-
-    dbsn_grid_size: int = 5
-    dbsn_spline_order: int = 3
-
-    num_rbf_centers: int = 5
-
-    num_wavelets: int = 5
-
 class PINNFactory:
-    def __init__(self, config: PINNConfig):
-        self.config = config
+    _registry: Dict[str, Type[nn.Module]] = {
+        "kan": ScaledCPIKAN,
+        "mlp": MLP,
+        "siren": SIREN,
+        "fourier": FourierNet,
+        "pi-dbsn": PIDBSN,
+        "rbf-kan": RBFKAN,
+        "wav-kan": WavKAN,
+    }
 
-        self._registry: Dict[str, Type[nn.Module]] = {
-            "kan": ScaledCPIKAN,
-            "mlp": MLP,
-            "siren": SIREN,
-            "fourier": FourierNet,
-            "pi-dbsn": PIDBSN,
-            "rbf-kan": RBFKAN,
-            "wav-kan": WavKAN,
-        }
+    @classmethod
+    def create(cls, config: NetworkConfig) -> nn.Module:
+        arch_name = config.architecture.lower()
 
-    def build_core_model(self) -> nn.Module:
-        arch_name = self.config.architecture.lower()
-        if arch_name not in self._registry:
-            raise ValueError(f"Архитектура '{arch_name}' не поддерживается. Доступны: {list(self._registry.keys())}")
+        if arch_name not in cls._registry:
+            available = list(cls._registry.keys())
+            raise ValueError(
+                f"Архитектура '{arch_name}' не поддерживается. "
+                f"Доступны: {available}"
+            )
 
-        ModelClass = self._registry[arch_name]
+        ModelClass = cls._registry[arch_name]
 
-        return ModelClass(self.config)
+        config_dict = config.__dict__.copy()
+        config_dict.pop("architecture", None)  
+
+        return ModelClass(config)
+
+    @classmethod
+    def available_architectures(cls) -> list:
+        return list(cls._registry.keys())
 
 class PINN(nn.Module):
-    def __init__(
-        self,
-        config: PINNConfig,
-    ):
+    def __init__(self, config: NetworkConfig | dict):
         super().__init__()
+
+        if isinstance(config, dict):
+            config = NetworkConfig(**config)
+
         self.config = copy.deepcopy(config)
-
-        actual_in_dim = self.config.in_dim
-
-        self.factory = PINNFactory(self.config)
-        self.model = self.factory.build_core_model()
+        self.model = PINNFactory.create(self.config)
 
         total_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
         print(
-            f"[{self.__class__.__name__} | {self.config.architecture.upper()}] "
-            f"{total_params:,} trainable params |"
+            f"[PINN | {self.config.architecture.upper()}] "
+            f"{total_params:,} trainable parameters"
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.model(x)
 
-    def plot_model_summary(self, save_path: str = "data/model_summary.png"):
-        import os
-        import matplotlib.pyplot as plt
-        import torch.nn as nn
+    def count_parameters(self, trainable_only: bool = True) -> int:
+        if trainable_only:
+            return sum(p.numel() for p in self.parameters() if p.requires_grad)
+        return sum(p.numel() for p in self.parameters())
 
-        total_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
+    def plot_model_summary(self, save_path: str = "data/model_summary.png") -> None:
+        total_params = self.count_parameters()
         layers_info = []
 
         for name, module in self.named_modules():
             if module is self:
                 continue
 
-            params = sum(p.numel() for p in module.parameters(recurse=False) if p.requires_grad)
+            params = sum(
+                p.numel() for p in module.parameters(recurse=False) if p.requires_grad
+            )
             depth = name.count('.')
             indent = "    " * depth
             branch = "├── " if depth > 0 else "■ "
@@ -114,29 +98,18 @@ class PINN(nn.Module):
                 extras.append(f"Weights: {params:,}")
 
             if hasattr(module, 'residual') and module.residual:
-                extras.append("(+) Residual (+x)")
-            if hasattr(module, 'res_scale'): 
-                extras.append("(+) Learnable Skip-Conn")
-
-            if hasattr(module, 'base_activation'):
-                act_name = module.base_activation.__class__.__name__
-                extras.append(f"Base Act: {act_name}")
-
+                extras.append("Residual")
+            if hasattr(module, 'res_scale'):
+                extras.append("Skip-Conn")
             if hasattr(module, 'w0'):
                 extras.append(f"w0={module.w0}")
-                if getattr(module, 'is_first', False):
-                    extras.append("First Layer (Sine)")
-                else:
-                    extras.append("Sine Act")
-
             if isinstance(module, (nn.Tanh, nn.SiLU, nn.GELU, nn.ReLU)):
-                extras.append("f(x) Activation")
+                extras.append("Activation")
 
             is_container = isinstance(module, (nn.Sequential, nn.ModuleList))
 
-            if params > 0 or extras or is_container or "enrichment" in name.lower():
+            if params > 0 or extras or is_container:
                 extra_str = f" [{', '.join(extras)}]" if extras else ""
-
                 line = f"{indent}{branch}{layer_short_name} ({class_name}){extra_str}"
                 layers_info.append(line)
 
@@ -144,20 +117,35 @@ class PINN(nn.Module):
         fig, ax = plt.subplots(figsize=(10, fig_height))
         ax.axis('off')
 
-        text_str =  f"[*] PINN Architecture & Data Flow\n"
-        text_str += f"════════════════════════════════════════════════════════════════\n"
-        text_str += f" Model Type     : {self.config.architecture.upper()}\n"
-        text_str += f" Total Params   : {total_params:,}\n"
-        text_str += f"════════════════════════════════════════════════════════════════\n\n"
+        text_str = f"[*] PINN Architecture\n"
+        text_str += "═" * 60 + "\n"
+        text_str += f" Architecture    : {self.config.architecture.upper()}\n"
+        text_str += f" Hidden Dim      : {self.config.hidden_dim}\n"
+        text_str += f" Layers          : {self.config.n_layers}\n"
+        text_str += f" Total Params    : {total_params:,}\n"
+        text_str += "═" * 60 + "\n\n"
         text_str += " Structure:\n"
         text_str += "\n".join(layers_info)
 
-        ax.text(0.02, 0.98, text_str, transform=ax.transAxes, fontsize=10,
-                verticalalignment='top', fontfamily='monospace', 
-                bbox=dict(boxstyle='round4,pad=1', facecolor='#1e1e2e', edgecolor='#89b4fa', linewidth=2, alpha=0.95), color='#cdd6f4')
+        ax.text(
+            0.02, 0.98, text_str,
+            transform=ax.transAxes,
+            fontsize=10,
+            verticalalignment='top',
+            fontfamily='monospace',
+            bbox=dict(
+                boxstyle='round4,pad=1',
+                facecolor='#1e1e2e',
+                edgecolor='#89b4fa',
+                linewidth=2,
+                alpha=0.95
+            ),
+            color='#cdd6f4'
+        )
 
         os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
         plt.tight_layout()
         plt.savefig(save_path, dpi=150, bbox_inches='tight', facecolor='#f1f3f5')
-        plt.close()
-        print(f"[{self.__class__.__name__}] Расширенная сводка модели сохранена в: {save_path}")
+        plt.close(fig)
+
+        print(f"[PINN] Model summary saved: {save_path}")

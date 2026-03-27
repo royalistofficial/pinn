@@ -6,7 +6,15 @@ from .pi_dbsn import PIDBSN
 from .rbf_kan import RBFKAN
 from .wav_kan import WavKAN
 
+from networks.configs import (
+    NetworkConfig,
+    DEFAULT_CONFIG,
+    PRESET_CONFIGS,
+    get_config,
+)
+
 __all__ = [
+
     "MLP",
     "FourierNet",
     "SIREN",
@@ -16,14 +24,11 @@ __all__ = [
     "PIDBSN",
     "RBFKAN",
     "WavKAN",
-    "KAN_CONFIG",
-    "MLP_CONFIG",
-    "SIREN_CONFIG",
-    "FOURIER_CONFIG",
-    "PI_DBSN_CONFIG",
-    "RBF_KAN_CONFIG",
-    "WAV_KAN_CONFIG",
-    "CURRENT_ARCHITECTURE_CONFIG"
+
+    "NetworkConfig",
+    "DEFAULT_CONFIG",
+    "PRESET_CONFIGS",
+    "get_config",
 ]
 
 MLP_CONFIG = {
@@ -96,3 +101,14 @@ WAV_KAN_CONFIG = {
 }
 
 CURRENT_ARCHITECTURE_CONFIG = MLP_CONFIG
+
+__all__.extend([
+    "MLP_CONFIG",
+    "SIREN_CONFIG", 
+    "FOURIER_CONFIG",
+    "KAN_CONFIG",
+    "PI_DBSN_CONFIG",
+    "RBF_KAN_CONFIG",
+    "WAV_KAN_CONFIG",
+    "CURRENT_ARCHITECTURE_CONFIG",
+])
