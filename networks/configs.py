@@ -141,12 +141,3 @@ def get_config(name: str = "mlp", **overrides) -> NetworkConfig:
         return NetworkConfig(**data)
 
     return config
-
-CURRENT_ARCHITECTURE_CONFIG = {
-    "architecture": DEFAULT_CONFIG.architecture,
-    "in_dim": DEFAULT_CONFIG.in_dim,
-    "out_dim": DEFAULT_CONFIG.out_dim,
-    "hidden_dim": DEFAULT_CONFIG.hidden_dim,
-    "n_layers": DEFAULT_CONFIG.n_layers,
-    "activation": DEFAULT_CONFIG.activation,
-}

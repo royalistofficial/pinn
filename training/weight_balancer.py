@@ -34,7 +34,7 @@ class WeightBalancer:
                 trace_dirichlet: float,
                 trace_neumann: float = 0.0,
             ) -> Tuple[float, float, float]:
-        
+
         self._trace_history["pde"].append(trace_pde)
         self._trace_history["dir"].append(trace_dirichlet)
         self._trace_history["neu"].append(trace_neumann)

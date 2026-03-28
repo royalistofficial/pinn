@@ -14,7 +14,8 @@ from ntk import (
     compute_ntk_from_jacobian,
     compute_spectrum,
     get_all_metrics,
-    plot_ntk_master_dashboard
+    plot_ntk_master_dashboard,
+    plot_ntk_evolution  
 )
 
 @dataclass
@@ -161,3 +162,13 @@ class NTKAnalyzer:
         if len(X) <= n:
             return X
         return X[torch.linspace(0, len(X) - 1, n, device=X.device).long()]
+
+    def plot_evolution(self) -> None:
+        if len(self.history) < 2:
+            self.logger("[NTK] Недостаточно данных для графика эволюции (нужно минимум 2 замера).")
+            return
+
+        self.logger("[NTK] Генерация дашборда эволюции NTK...")
+        path = plot_ntk_evolution(self.history, self.output_dir)
+        if path:
+            self.logger(f"[NTK] Дашборд эволюции сохранен: {path}")

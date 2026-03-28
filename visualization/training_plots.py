@@ -8,6 +8,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.tri as mtri
 import matplotlib.patheffects as pe
+import matplotlib.colors as mcolors
 
 COLORS = {
     "loss": "#2563EB",
@@ -81,13 +82,13 @@ def plot_training_metrics(history: Dict, domain: str, path: str) -> None:
     ax.legend(fontsize=8)
 
     ax = axes[0, 1]
-    energy = history.get("energy", [])
+    energy = history.get("rel_energy", [])
     if energy:
-        ax.semilogy(epochs, energy, color=COLORS["energy"], lw=2.2, label="Энергетическая ошибка")
-        ax.fill_between(epochs, energy, alpha=0.08, color=COLORS["energy"])
-        _annotate_last(ax, epochs, energy, COLORS["energy"])
+        ax.semilogy(epochs, energy, color=COLORS["energy_rel"], lw=2.2, label="Отн. энергетическая ошибка")
+        ax.fill_between(epochs, energy, alpha=0.08, color=COLORS["energy_rel"])
+        _annotate_last(ax, epochs, energy, COLORS["energy_rel"])
 
-    _ax_style(ax, r"Энергетическая ошибка $\|\nabla(u-v)\|^2$", ylabel="Ошибка")
+    _ax_style(ax, r"Относительная энергетическая ошибка $\|\nabla(u-v)\|^2$", ylabel="Ошибка")
     ax.legend(fontsize=8)
 
     ax = axes[1, 0]
@@ -150,9 +151,8 @@ def plot_solution_fields(
         energy_density: np.ndarray,
         save_path: str,
     ) -> None:
-    import matplotlib.colors as mcolors
 
-    def _tripcolor_panel(ax, tri, values, title, cmap, clip_zero=False):
+    def _tripcolor_panel(ax, tri, values, title, cmap, clip_zero=False, use_log=False):
         valid = ~np.isnan(values)
         if not np.any(valid):
             values = np.zeros_like(values)
@@ -166,8 +166,15 @@ def plot_solution_fields(
         if np.isnan(vmax) or vmax <= vmin:
             vmax = vmin + 1e-8
 
-        norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
-        safe_values = np.where(np.isnan(values), vmin, values)
+        if use_log:
+            vmax_log = max(vmax, 1e-10)
+            vmin_log = vmax_log / 1e3
+            safe_values = np.clip(np.where(np.isnan(values), vmin_log, values), vmin_log, vmax_log)
+            norm = mcolors.LogNorm(vmin=vmin_log, vmax=vmax_log)
+        else:
+            safe_values = np.where(np.isnan(values), vmin, values)
+            norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
+
         shading = "flat" if clip_zero else "gouraud"
         tc = ax.tripcolor(tri, safe_values, shading=shading, cmap=cmap, norm=norm)
         ax.set_aspect("equal")
@@ -177,14 +184,14 @@ def plot_solution_fields(
     fig, axes = plt.subplots(2, 2, figsize=(12, 12))
 
     panels = [
-        (v, f"Решение v (Эпоха {epoch})", "viridis", False),
-        (u_exact, "Точное решение u", "viridis", False),
-        (abs_error, "Абсолютная ошибка |u - v|", "turbo", False),
-        (energy_density, r"Энергетическая ошибка $|\nabla e|^2$", "turbo", True),
+        (v, f"Решение v (Эпоха {epoch})", "viridis", False, False),
+        (u_exact, "Точное решение u", "viridis", False, False),
+        (abs_error, "Абсолютная ошибка |u - v|", "turbo", False, True),
+        (energy_density, r"Энергетическая ошибка $|\nabla e|^2$", "turbo", True, True),
     ]
 
-    for ax, (vals, title, cmap, cz) in zip(axes.flat, panels):
-        _tripcolor_panel(ax, tri, vals, title, cmap, clip_zero=cz)
+    for ax, (vals, title, cmap, cz, ul) in zip(axes.flat, panels):
+        _tripcolor_panel(ax, tri, vals, title, cmap, clip_zero=cz, use_log=ul)
 
     plt.tight_layout()
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)

@@ -108,6 +108,7 @@ class Trainer:
         )
 
         self._run_ntk_analysis(0)
+        self.callback._plot_fields(0)
         best_loss = float("inf")
         bd_iter = iter(self.data.boundary_iter())
 

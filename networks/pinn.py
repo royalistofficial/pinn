@@ -76,55 +76,93 @@ class PINN(nn.Module):
         return sum(p.numel() for p in self.parameters())
 
     def plot_model_summary(self, save_path: str = "data/model_summary.png") -> None:
-        total_params = self.count_parameters()
+
+        total_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
         layers_info = []
 
-        for name, module in self.named_modules():
+        modules = list(self.named_modules())
+
+        for i, (name, module) in enumerate(modules):
             if module is self:
                 continue
 
             params = sum(
                 p.numel() for p in module.parameters(recurse=False) if p.requires_grad
             )
-            depth = name.count('.')
-            indent = "    " * depth
-            branch = "├── " if depth > 0 else "■ "
 
-            layer_short_name = name.split('.')[-1] if name else "core"
+            parts = name.split('.')
+            depth = len(parts) - 1
+            layer_short_name = parts[-1] if name else "core"
+
+            if depth == 0:
+                prefix = "■ "
+            else:
+                prefix = "│   " * (depth - 1) + "├── "
+
             class_name = module.__class__.__name__
 
             extras = []
+
+            if hasattr(module, 'in_features') and hasattr(module, 'out_features'):
+                extras.append(f"{module.in_features}→{module.out_features}")
+            elif hasattr(module, 'in_channels') and hasattr(module, 'out_channels'):
+                extras.append(f"{module.in_channels}→{module.out_channels}")
+
             if params > 0:
-                extras.append(f"Weights: {params:,}")
+                extras.append(f"W:{params:,}")
 
-            if hasattr(module, 'residual') and module.residual:
-                extras.append("Residual")
-            if hasattr(module, 'res_scale'):
-                extras.append("Skip-Conn")
+            is_activation = isinstance(module, (
+                nn.Tanh, nn.ReLU, nn.LeakyReLU, nn.GELU, nn.SiLU, 
+                nn.Sigmoid, nn.ELU, nn.Softplus, nn.Mish
+            )) or "activation" in module.__module__.lower()
+
+            if is_activation:
+                extras.append("ƒ(x) Act")
+
+            has_skip = any(
+                hasattr(module, attr) and getattr(module, attr) for attr in 
+                ['residual', 'use_skip', 'res_scale', 'shortcut', 'skip_connection', 'has_residual']
+            )
+            if has_skip:
+                extras.append("⤿ Skip-Conn")
+
+            if isinstance(module, (nn.LayerNorm, nn.BatchNorm1d, nn.BatchNorm2d)):
+                extras.append("± Norm")
+            if isinstance(module, nn.Dropout):
+                extras.append(f"✗ Drop(p={module.p})")
+
             if hasattr(module, 'w0'):
-                extras.append(f"w0={module.w0}")
-            if isinstance(module, (nn.Tanh, nn.SiLU, nn.GELU, nn.ReLU)):
-                extras.append("Activation")
+                extras.append(f"w0={getattr(module, 'w0')}")
+            if hasattr(module, 'sigma'):
+                extras.append(f"σ={getattr(module, 'sigma')}")
+            if hasattr(module, 'grid_size'):
+                extras.append(f"grid={getattr(module, 'grid_size')}")
+            if hasattr(module, 'degree'):
+                extras.append(f"deg={getattr(module, 'degree')}")
 
-            is_container = isinstance(module, (nn.Sequential, nn.ModuleList))
+            extra_str = f" [{', '.join(extras)}]" if extras else ""
+            line = f"{prefix}{layer_short_name} ({class_name}){extra_str}"
+            layers_info.append(line)
 
-            if params > 0 or extras or is_container:
-                extra_str = f" [{', '.join(extras)}]" if extras else ""
-                line = f"{indent}{branch}{layer_short_name} ({class_name}){extra_str}"
-                layers_info.append(line)
+        line_height = 0.22
+        fig_height = max(6.0, len(layers_info) * line_height + 4.0)
 
-        fig_height = max(5.0, len(layers_info) * 0.28 + 3.0)
-        fig, ax = plt.subplots(figsize=(10, fig_height))
+        fig, ax = plt.subplots(figsize=(12, fig_height))
         ax.axis('off')
 
-        text_str = f"[*] PINN Architecture\n"
-        text_str += "═" * 60 + "\n"
-        text_str += f" Architecture    : {self.config.architecture.upper()}\n"
-        text_str += f" Hidden Dim      : {self.config.hidden_dim}\n"
-        text_str += f" Layers          : {self.config.n_layers}\n"
+        text_str = f"[*] PINN ARCHITECTURE SUMMARY\n"
+        text_str += "═" * 70 + "\n"
+
+        arch = getattr(self.config, 'architecture', 'unknown').upper() if hasattr(self, 'config') else 'N/A'
+        h_dim = getattr(self.config, 'hidden_dim', 'N/A') if hasattr(self, 'config') else 'N/A'
+        n_lay = getattr(self.config, 'n_layers', 'N/A') if hasattr(self, 'config') else 'N/A'
+
+        text_str += f" Architecture    : {arch}\n"
+        text_str += f" Hidden Dim      : {h_dim}\n"
+        text_str += f" Layers          : {n_lay}\n"
         text_str += f" Total Params    : {total_params:,}\n"
-        text_str += "═" * 60 + "\n\n"
-        text_str += " Structure:\n"
+        text_str += "═" * 70 + "\n\n"
+        text_str += " Model Structure:\n"
         text_str += "\n".join(layers_info)
 
         ax.text(
@@ -134,18 +172,18 @@ class PINN(nn.Module):
             verticalalignment='top',
             fontfamily='monospace',
             bbox=dict(
-                boxstyle='round4,pad=1',
-                facecolor='#1e1e2e',
-                edgecolor='#89b4fa',
+                boxstyle='round4,pad=1.5',
+                facecolor='#1e1e2e',    
+                edgecolor='#89b4fa',    
                 linewidth=2,
                 alpha=0.95
             ),
-            color='#cdd6f4'
+            color='#cdd6f4'             
         )
 
         os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
         plt.tight_layout()
-        plt.savefig(save_path, dpi=150, bbox_inches='tight', facecolor='#f1f3f5')
+        plt.savefig(save_path, dpi=200, bbox_inches='tight', facecolor='#f1f3f5')
         plt.close(fig)
 
-        print(f"[PINN] Model summary saved: {save_path}")
+        print(f"[PINN] Подробная структура модели сохранена: {save_path}")
