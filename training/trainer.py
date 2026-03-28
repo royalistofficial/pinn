@@ -58,7 +58,7 @@ class Trainer:
 
         self.ntk_analyzer = NTKAnalyzer(
             model=self.pinn,
-            output_dir=os.path.join(OUTPUT_DIR, "ntk_plots"),
+            output_dir=OUTPUT_DIR,
             n_interior=NTK_ANALYSIS_POINTS,
             n_boundary=NTK_ANALYSIS_POINTS // 2,
             node_order=NTK_NODE_ORDER,

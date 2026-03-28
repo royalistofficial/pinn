@@ -18,6 +18,7 @@ from visualization.convergence_plots import (
     plot_ntk_master_dashboard,
     plot_convergence_evolution,
 )
+from config import OUTPUT_DIR
 
 @dataclass
 class NTKResult:
@@ -51,7 +52,7 @@ class NTKAnalyzer:
     def __init__(
                 self,
                 model: nn.Module,
-                output_dir: str = "data/ntk_plots",
+                output_dir: str = OUTPUT_DIR,
                 n_interior: int = 64,
                 n_boundary: int = 32,
                 node_order: str = "xy",
