@@ -9,7 +9,7 @@ from config import (
     DEVICE, ADAM_LR, ADAM_EPOCHS, LBFGS_EPOCHS, LBFGS_LR, 
     LBFGS_MAX_ITER, LBFGS_TOLERANCE_GRAD, LBFGS_TOLERANCE_CHANGE,
     BC_PENALTY, OUTPUT_DIR, NTK_ANALYSIS_EVERY, NTK_ANALYSIS_POINTS, 
-    NTK_NODE_ORDER, AUTO_BALANCE_ENABLED, AUTO_BALANCE_METHOD,
+    AUTO_BALANCE_ENABLED
 )
 
 from networks.configs import NetworkConfig
@@ -62,7 +62,6 @@ class Trainer:
         self.lr = ADAM_LR
         self.weight_balancer = WeightBalancer(WeightConfig(
             enabled=AUTO_BALANCE_ENABLED,
-            method=AUTO_BALANCE_METHOD,
         ))
 
         self.ntk_analyzer = NTKAnalyzer(
@@ -70,7 +69,6 @@ class Trainer:
             output_dir=OUTPUT_DIR,
             n_interior=NTK_ANALYSIS_POINTS,
             n_boundary=NTK_ANALYSIS_POINTS // 2,
-            node_order=NTK_NODE_ORDER,
             logger=logger,
         )
 
@@ -108,9 +106,6 @@ class Trainer:
         self.logger.section(
             f"Training PINN | Phase 1: Adam ({ADAM_EPOCHS} ep) | Phase 2: L-BFGS ({LBFGS_EPOCHS} ep)"
         )
-
-        if AUTO_BALANCE_ENABLED:
-            self.logger(f"[Config] Auto-balance enabled: method={AUTO_BALANCE_METHOD}")
 
         self._run_ntk_analysis(0)
         best_loss = float("inf")

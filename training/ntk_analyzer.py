@@ -38,10 +38,8 @@ class NTKAnalyzer:
         output_dir: str = "data/ntk_plots",
         n_interior: int = 64,
         n_boundary: int = 32,
-        node_order: str = "xy",
         learning_rate: float = 1e-3,
         logger: Optional[Callable[[str], None]] = None,
-        generate_convergence_reports: bool = True,
     ):
         self.model = model
         self.output_dir = output_dir
@@ -157,9 +155,6 @@ class NTKAnalyzer:
         self.logger(f"[NTK] Спектральный Дашборд сохранен: {dash_path}")
 
         return result
-
-    def plot_evolution(self) -> None:
-        pass
 
     @staticmethod
     def _subsample(X: torch.Tensor, n: int) -> torch.Tensor:

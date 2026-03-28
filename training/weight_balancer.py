@@ -6,7 +6,6 @@ import numpy as np
 @dataclass
 class WeightConfig:
     enabled: bool = False
-    method: str = "ntk_trace"
     update_every: int = 100
     momentum: float = 0.
     min_weight: float = 1e-3
@@ -35,9 +34,7 @@ class WeightBalancer:
                 trace_dirichlet: float,
                 trace_neumann: float = 0.0,
             ) -> Tuple[float, float, float]:
-        if not self.config.enabled or self.config.method != "ntk_trace":
-            return self.w_pde, self.w_dirichlet, self.w_neumann
-
+        
         self._trace_history["pde"].append(trace_pde)
         self._trace_history["dir"].append(trace_dirichlet)
         self._trace_history["neu"].append(trace_neumann)
