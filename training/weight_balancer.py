@@ -8,9 +8,9 @@ class WeightConfig:
     enabled: bool = False
     method: str = "ntk_trace"
     update_every: int = 100
-    momentum: float = 0.9
-    min_weight: float = 0.1
-    max_weight: float = 10.0
+    momentum: float = 0.
+    min_weight: float = 1e-3
+    max_weight: float = 1e+3
 
     w_pde_init: float = 1.0
     w_dirichlet_init: float = 1.0

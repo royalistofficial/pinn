@@ -77,9 +77,6 @@ def plot_training_metrics(history: Dict, domain: str, path: str) -> None:
     pde = history.get("pde", [])
     ax.semilogy(epochs, loss, color=COLORS["loss"], lw=2, label="Общие потери")
     _annotate_last(ax, epochs, loss, COLORS["loss"], dy=8)
-    if pde:
-        ax.semilogy(epochs, pde, color=COLORS["pde"], lw=1, alpha=0.4, ls="--", label="ДУЧП")
-        _annotate_last(ax, epochs, pde, COLORS["pde"], dy=-10)
     _ax_style(ax, "Функция потерь", ylabel="Потери")
     ax.legend(fontsize=8)
 
@@ -90,12 +87,6 @@ def plot_training_metrics(history: Dict, domain: str, path: str) -> None:
         ax.fill_between(epochs, energy, alpha=0.08, color=COLORS["energy"])
         _annotate_last(ax, epochs, energy, COLORS["energy"])
 
-    energy_pred = history.get("energy_pred", [])
-    if energy_pred:
-        ax.semilogy(epochs, energy_pred, color=COLORS["energy_pred"], lw=1.5, 
-                    ls="--", alpha=0.8, label="Априорный прогноз")
-        _annotate_last(ax, epochs, energy_pred, COLORS["energy_pred"], dy=-10)
-
     _ax_style(ax, r"Энергетическая ошибка $\|\nabla(u-v)\|^2$", ylabel="Ошибка")
     ax.legend(fontsize=8)
 
@@ -104,12 +95,6 @@ def plot_training_metrics(history: Dict, domain: str, path: str) -> None:
     if rel:
         ax.semilogy(epochs, rel, color=COLORS["rel_l2"], lw=2.2, label=r"Относительная ошибка $L_2$")
         _annotate_last(ax, epochs, rel, COLORS["rel_l2"])
-
-    l2_pred = history.get("l2_pred", [])
-    if l2_pred:
-        ax.semilogy(epochs, l2_pred, color=COLORS["l2_pred"], lw=1.5,
-                    ls="--", alpha=0.8, label="Априорный прогноз")
-        _annotate_last(ax, epochs, l2_pred, COLORS["l2_pred"], dy=-10)
 
     _ax_style(ax, r"Относительная ошибка $L_2$", ylabel="Ошибка")
     ax.legend(fontsize=8)
