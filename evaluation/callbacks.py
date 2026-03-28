@@ -20,17 +20,17 @@ if TYPE_CHECKING:
 
 class TrainingCallback:
     def __init__(
-                self,
-                pinn: nn.Module,
-                data,
-                solution,
-                logger: Callable[[str], None],
-                domain_name: str = "domain",
-                metrics_calculator: Optional[MetricsCalculator] = None,
-                weight_balancer: Optional["WeightBalancer"] = None,
-                ntk_analyzer: Optional["NTKAnalyzer"] = None,
-                plot_every: int = 100,
-            ):
+        self,
+        pinn: nn.Module,
+        data,
+        solution,
+        logger: Callable[[str], None],
+        domain_name: str = "domain",
+        metrics_calculator: Optional[MetricsCalculator] = None,
+        weight_balancer: Optional["WeightBalancer"] = None,
+        ntk_analyzer: Optional["NTKAnalyzer"] = None,
+        plot_every: int = 100,
+    ):
         self.pinn = pinn
         self.data = data
         self.solution = solution
@@ -42,11 +42,6 @@ class TrainingCallback:
 
         self.metrics_calculator = metrics_calculator or MetricsCalculator(solution)
         self.history = MetricsHistory()
-
-        self.l2_pred_initial = None
-        self.energy_pred_initial = None
-        self.poincare_constant = None
-        self.stability_constant = None
 
     def on_epoch_end(self, epoch: int, lr: float, **loss_info) -> float:
         s = self.data.sample
@@ -69,34 +64,6 @@ class TrainingCallback:
                 w_dirichlet = weights.get("dirichlet", 1.0)
                 w_neumann = weights.get("neumann", 0.0)
 
-            l2_pred = None
-            energy_pred = None
-
-            if self.ntk_analyzer is not None and len(self.ntk_analyzer.history) > 0:
-                latest_ntk = self.ntk_analyzer.history[-1]
-                if latest_ntk.convergence_prediction is not None:
-                    pred = latest_ntk.convergence_prediction
-                    if hasattr(pred, 'error_bounds') and pred.error_bounds is not None:
-                        eb = pred.error_bounds
-
-                        if self.l2_pred_initial is None:
-                            self.l2_pred_initial = eb.l2_error_predicted
-                            self.energy_pred_initial = eb.energy_error_predicted
-                            self.poincare_constant = eb.poincare_constant
-                            self.stability_constant = eb.stability_constant
-
-                        pred_epochs = pred.predicted_epochs
-                        if len(pred_epochs) > 0 and len(eb.l2_error_predicted) > 0:
-
-                            import numpy as np
-                            idx = np.searchsorted(pred_epochs, epoch)
-                            if idx < len(eb.l2_error_predicted):
-                                l2_pred = float(eb.l2_error_predicted[idx])
-                                energy_pred = float(eb.energy_error_predicted[idx])
-                            elif len(eb.l2_error_predicted) > 0:
-                                l2_pred = float(eb.l2_error_predicted[-1])
-                                energy_pred = float(eb.energy_error_predicted[-1])
-
             self.history.pretrain.log(
                 epoch,
                 loss=loss_info.get("loss", 0),
@@ -110,8 +77,6 @@ class TrainingCallback:
                 w_pde=w_pde,
                 w_dirichlet=w_dirichlet,
                 w_neumann=w_neumann,
-                l2_pred=l2_pred if l2_pred is not None else 0.0,
-                energy_pred=energy_pred if energy_pred is not None else 0.0,
             )
 
             log_msg = (
@@ -124,9 +89,6 @@ class TrainingCallback:
 
             if self.weight_balancer is not None and self.weight_balancer.config.enabled:
                 log_msg += f" | w=[{w_pde:.2f},{w_dirichlet:.2f},{w_neumann:.2f}]"
-
-            if l2_pred is not None:
-                log_msg += f" | L²_pred={l2_pred:.2e}"
 
             self.logger(log_msg)
 
@@ -149,10 +111,7 @@ class TrainingCallback:
         mesh = self.data.sample.quad.mesh
         tri_refi, pts_refi = refine_mesh(mesh)
 
-        xy_t = torch.tensor(
-            pts_refi, dtype=torch.float32,
-            device=self.data.sample.quad.xy_in.device
-        )
+        xy_t = torch.tensor(pts_refi, dtype=torch.float32, device=self.data.sample.quad.xy_in.device)
 
         self.pinn.eval()
         fv = evaluate_fields(xy_t, self.pinn, self.solution)

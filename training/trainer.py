@@ -64,7 +64,6 @@ class Trainer:
             node_order=NTK_NODE_ORDER,
             learning_rate=lr,
             logger=logger,
-            domain_diameter=self._compute_domain_diameter(domain),
         )
 
         self.metrics_calculator = MetricsCalculator(solution)
@@ -232,9 +231,9 @@ class Trainer:
         )
 
         if AUTO_BALANCE_ENABLED and epoch > 0 and epoch % AUTO_BALANCE_UPDATE_EVERY == 0:
-            trace_pde = result.trace_KL
-            trace_dir = result.dirichlet.get("trace", 1.0) if result.dirichlet else 1.0
-            trace_neu = result.neumann.get("trace", 1.0) if result.neumann else 0.0
+            trace_pde = result.trace_KL / max(result.n_interior, 1)
+            trace_dir = result.dirichlet.get("trace", 1.0) / max(result.n_dirichlet, 1) if result.dirichlet else 1.0
+            trace_neu = result.neumann.get("trace", 1.0) / max(result.n_neumann, 1) if result.neumann else 0.0
 
             w_pde, w_dir, w_neu = self.weight_balancer.update_from_ntk(
                 trace_pde, trace_dir, trace_neu

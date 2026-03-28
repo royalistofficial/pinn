@@ -7,32 +7,16 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from networks.ntk_utils import (
-    compute_jacobian,
-    compute_pde_jacobian,
-    compute_bc_jacobian,
-    compute_ntk_from_jacobian,
-    split_boundary_points,
-    ntk_comprehensive_analysis,
-    _compute_condition_number,
-    _compute_effective_rank,
-)
-from visualization.ntk_plots import (
-    plot_ntk_combined,
-    plot_ntk_evolution,
-)
+from networks.ntk_utils import ntk_comprehensive_analysis
+from visualization.ntk_plots import plot_ntk_evolution
 from training.convergence_prediction import (
     ConvergencePrediction,
     compute_convergence_prediction,
-    compute_convergence_prediction_with_errors,
     generate_convergence_report,
-    ConvergenceTracker,
 )
 from visualization.convergence_plots import (
-    plot_convergence_prediction,
+    plot_ntk_master_dashboard,
     plot_convergence_evolution,
-    plot_component_comparison,
-    plot_error_prediction,
 )
 
 @dataclass
@@ -58,8 +42,6 @@ class NTKResult:
 
     kappa_ratio: float = 0.0
     rank_ratio: float = 0.0
-    spectral_decay_rate_K: float = 0.0
-    spectral_decay_rate_KL: float = 0.0
     health_score: float = 0.0
     energy_balance: Dict[str, float] = field(default_factory=dict)
 
@@ -76,7 +58,6 @@ class NTKAnalyzer:
                 learning_rate: float = 1e-3,
                 logger: Optional[Callable[[str], None]] = None,
                 generate_convergence_reports: bool = True,
-                domain_diameter: float = 1.0,
             ):
         self.model = model
         self.output_dir = output_dir
@@ -86,7 +67,6 @@ class NTKAnalyzer:
         self.learning_rate = learning_rate
         self.logger = logger or print
         self.generate_convergence_reports = generate_convergence_reports
-        self.domain_diameter = domain_diameter
 
         self.history: List[NTKResult] = []
         self.epochs: List[int] = []
@@ -121,31 +101,39 @@ class NTKAnalyzer:
             n_bd = len(X_bd)
 
         self.logger(f"[NTK] Points: interior={n_in}, boundary={n_bd}")
+        self.logger("[NTK] Вычисляем спектры NTK напрямую (без отрисовки матриц)...")
 
-        self.logger("[NTK] Выполняется объединённый NTK анализ...")
-
-        result_combined = plot_ntk_combined(
+        result_combined = ntk_comprehensive_analysis(
             model=self.model,
-            epoch=epoch,
             X_interior=X_interior,
             X_boundary=X_boundary,
             normals=normals,
             bc_mask=bc_mask,
             n_interior=self.n_interior,
             n_boundary=self.n_boundary,
-            output_dir=self.output_dir,
-            learning_rate=self.learning_rate,
         )
 
-        eig_K = result_combined["eigenvalues_K"]
-        eig_KL = result_combined["eigenvalues_KL"]
-        eig_D = result_combined.get("dirichlet", {}).get("eigenvalues") if result_combined.get("dirichlet") else None
-        eig_N = result_combined.get("neumann", {}).get("eigenvalues") if result_combined.get("neumann") else None
+        interior = result_combined["interior"]
+        boundary = result_combined.get("boundary", {})
 
-        kappa_K = result_combined["condition_number_K"]
-        kappa_KL = result_combined["condition_number_KL"]
-        rank_K = result_combined["effective_rank_K"]
-        rank_KL = result_combined["effective_rank_KL"]
+        eig_K = interior["eigenvalues_K"]
+        eig_KL = interior["eigenvalues_KL"]
+
+        dir_data = boundary.get("dirichlet")
+        neu_data = boundary.get("neumann")
+
+        eig_D = dir_data["eigenvalues"] if dir_data else None
+        eig_N = neu_data["eigenvalues"] if neu_data else None
+
+        kappa_K = interior["condition_number_K"]
+        kappa_KL = interior["condition_number_KL"]
+        rank_K = interior["effective_rank_K"]
+        rank_KL = interior["effective_rank_KL"]
+        trace_K = interior["trace_K"]
+        trace_KL = interior["trace_KL"]
+
+        n_dir = dir_data["n_points"] if dir_data else 0
+        n_neu = neu_data["n_points"] if neu_data else 0
 
         kappa_ratio = kappa_KL / kappa_K if kappa_K > 0 and kappa_K < float("inf") else float("inf")
         rank_ratio = rank_KL / rank_K if rank_K > 0 else 0.0
@@ -182,7 +170,7 @@ class NTKAnalyzer:
         if self.generate_convergence_reports:
             self.logger("[NTK] Computing convergence prediction...")
 
-            convergence_pred = compute_convergence_prediction_with_errors(
+            convergence_pred = compute_convergence_prediction(
                 eigenvalues_K=eig_K,
                 eigenvalues_KL=eig_KL,
                 eigenvalues_KD=eig_D,
@@ -190,26 +178,25 @@ class NTKAnalyzer:
                 learning_rate=self.learning_rate,
                 target_error=0.01,
                 epoch=epoch,
-                domain_diameter=self.domain_diameter,
             )
 
             self.convergence_history.append(convergence_pred)
 
         result = NTKResult(
             epoch=epoch,
-            eigenvalues_KL=result_combined["eigenvalues_KL"],
-            condition_number_KL=result_combined["condition_number_KL"],
-            effective_rank_KL=result_combined["effective_rank_KL"],
-            trace_KL=result_combined["trace_KL"],
-            eigenvalues_K=result_combined["eigenvalues_K"],
-            condition_number_K=result_combined["condition_number_K"],
-            effective_rank_K=result_combined["effective_rank_K"],
-            trace_K=result_combined["trace_K"],
-            dirichlet=result_combined.get("dirichlet"),
-            neumann=result_combined.get("neumann"),
+            eigenvalues_KL=eig_KL,
+            condition_number_KL=kappa_KL,
+            effective_rank_KL=rank_KL,
+            trace_KL=trace_KL,
+            eigenvalues_K=eig_K,
+            condition_number_K=kappa_K,
+            effective_rank_K=rank_K,
+            trace_K=trace_K,
+            dirichlet=dir_data,
+            neumann=neu_data,
             n_interior=n_in,
-            n_dirichlet=result_combined.get("n_dirichlet", 0),
-            n_neumann=result_combined.get("n_neumann", 0),
+            n_dirichlet=n_dir,
+            n_neumann=n_neu,
             kappa_ratio=kappa_ratio,
             rank_ratio=rank_ratio,
             health_score=health_score,
@@ -223,7 +210,7 @@ class NTKAnalyzer:
         self._log_result(result)
 
         if self.generate_convergence_reports and (epoch == 0 or len(self.history) % 5 == 0):
-            self._generate_convergence_report(result, epoch, eig_K, eig_KL, eig_D, eig_N)
+            self._generate_convergence_report(result, epoch)
 
         return result
 
@@ -313,16 +300,10 @@ class NTKAnalyzer:
                 f"(bottleneck: {result.convergence_prediction.bottleneck_component})"
             )
 
-        self.logger(f"[NTK] Сохранён объединённый график в {self.output_dir}")
-
     def _generate_convergence_report(
                 self,
                 result: NTKResult,
                 epoch: int,
-                eig_K: np.ndarray,
-                eig_KL: np.ndarray,
-                eig_D: Optional[np.ndarray],
-                eig_N: Optional[np.ndarray],
             ) -> None:
         if result.convergence_prediction is None:
             return
@@ -343,39 +324,13 @@ class NTKAnalyzer:
                 "total": self.loss_history["loss"],
             }
 
-        plot_path = plot_convergence_prediction(
+        dash_path = plot_ntk_master_dashboard(
             prediction=pred,
+            epoch=epoch,
             actual_losses=actual_losses,
             output_dir=self.output_dir,
         )
-        self.logger(f"[NTK] Convergence plot saved: {plot_path}")
-
-        pde_metrics = {"eigenvalues": eig_KL, "condition_number": result.condition_number_KL}
-        dir_metrics = {"eigenvalues": eig_D} if eig_D is not None else None
-        neu_metrics = {"eigenvalues": eig_N} if eig_N is not None else None
-        sol_metrics = {"eigenvalues": eig_K, "condition_number": result.condition_number_K}
-
-        comp_path = plot_component_comparison(
-            pde_metrics=pde_metrics,
-            dirichlet_metrics=dir_metrics,
-            neumann_metrics=neu_metrics,
-            solution_metrics=sol_metrics,
-            epoch=epoch,
-            learning_rate=self.learning_rate,
-            output_dir=self.output_dir,
-        )
-        self.logger(f"[NTK] Component comparison plot saved: {comp_path}")
-
-        if hasattr(pred, 'error_bounds') and pred.error_bounds is not None:
-            error_path = plot_error_prediction(
-                prediction=pred,
-                actual_l2_history=self.loss_history.get("l2_error"),
-                actual_energy_history=self.loss_history.get("energy_error"),
-                actual_epochs=self.epochs if self.epochs else None,
-                output_dir=self.output_dir,
-            )
-            if error_path:
-                self.logger(f"[NTK] Error prediction plot saved: {error_path}")
+        self.logger(f"[NTK] Master Dashboard saved: {dash_path}")
 
     def _plot_convergence_evolution(self) -> None:
         plot_path = plot_convergence_evolution(
@@ -498,11 +453,9 @@ class NTKAnalyzer:
 
     @staticmethod
     def _subsample(X: torch.Tensor, n: int) -> torch.Tensor:
-        N = len(X)
-        if N <= n:
+        if len(X) <= n:
             return X
-        idx = torch.linspace(0, N - 1, n, device=X.device).long()
-        return X[idx]
+        return X[torch.linspace(0, len(X) - 1, n, device=X.device).long()]
 
     def get_history_dict(self) -> List[Dict[str, Any]]:
         return [

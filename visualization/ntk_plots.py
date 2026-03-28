@@ -113,7 +113,7 @@ def plot_ntk_combined(
             output_dir: str = "data/ntk_plots",
             learning_rate: float = 1e-3,
         ) -> Dict[str, Any]:
-os.makedirs(output_dir, exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)
     device = next(model.parameters()).device
 
     X_in = _subsample(X_interior.to(device), n_interior)
@@ -375,7 +375,7 @@ def plot_ntk_evolution(
             epochs: List[int],
             output_dir: str = "data/ntk_plots",
         ) -> None:
-if len(spectra_history) < 2:
+    if len(spectra_history) < 2:
         return
 
     os.makedirs(output_dir, exist_ok=True)
@@ -518,13 +518,13 @@ if len(spectra_history) < 2:
     print(f"[NTK Evolution] Сохранено → {out_path}")
 
 def plot_ntk_pde(*args, **kwargs):
-return plot_ntk_combined(*args, **kwargs)
+    return plot_ntk_combined(*args, **kwargs)
 
 def plot_ntk_full(*args, **kwargs):
-return plot_ntk_combined(*args, **kwargs)
+    return plot_ntk_combined(*args, **kwargs)
 
 def plot_ntk_spectrum_analysis(*args, **kwargs):
-return plot_ntk_combined(*args, **kwargs)
+    return plot_ntk_combined(*args, **kwargs)
 
 def plot_spectrum_evolution(*args, **kwargs):
-return plot_ntk_evolution(*args, **kwargs)
+    return plot_ntk_evolution(*args, **kwargs)
