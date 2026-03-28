@@ -75,7 +75,7 @@ class TrainingCallback:
 
             if self.ntk_analyzer is not None and len(self.ntk_analyzer.history) > 0:
                 latest_ntk = self.ntk_analyzer.history[-1]
-                if latest_ntk.convergence_prediction is not None:
+                if getattr(latest_ntk, 'convergence_prediction', None) is not None:
                     pred = latest_ntk.convergence_prediction
                     if hasattr(pred, 'error_bounds') and pred.error_bounds is not None:
                         eb = pred.error_bounds
