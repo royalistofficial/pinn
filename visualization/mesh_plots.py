@@ -98,6 +98,3 @@ def plot_mesh(
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
     fig.savefig(save_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
-
-def gradient(v: torch.Tensor, xy: torch.Tensor, create_graph: bool = True) -> torch.Tensor:
-    return torch.autograd.grad(v, xy, torch.ones_like(v), create_graph=create_graph)[0]

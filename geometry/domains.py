@@ -18,9 +18,6 @@ class BaseDomain(abc.ABC):
     @abc.abstractmethod
     def bc_type(self, edge_idx: int) -> float: ...
 
-    @abc.abstractmethod
-    def holes(self) -> np.ndarray: ...
-
     @property
     def has_neumann(self) -> bool:
         bs = self.boundary_segments()
@@ -29,22 +26,16 @@ class BaseDomain(abc.ABC):
 class SquareDomain(BaseDomain):
     @property
     def name(self): return "square"
-    def boundary_vertices(self):
-        return np.array([[-1,-1],[1,-1],[1,1],[-1,1]], dtype=np.float64)
-    def boundary_segments(self):
-        return np.array([[0,1],[1,2],[2,3],[3,0]], dtype=np.int32)
+    def boundary_vertices(self): return np.array([[-1,-1],[1,-1],[1,1],[-1,1]], dtype=np.float64)
+    def boundary_segments(self): return np.array([[0,1],[1,2],[2,3],[3,0]], dtype=np.int32)
     def bc_type(self, i): return 1.0
-    def holes(self): return np.zeros((0,2), dtype=np.float64)
 
 class SquareMixedDomain(BaseDomain):
     @property
     def name(self): return "square_mixed"
-    def boundary_vertices(self):
-        return np.array([[-1,-1],[1,-1],[1,1],[-1,1]], dtype=np.float64)
-    def boundary_segments(self):
-        return np.array([[0,1],[1,2],[2,3],[3,0]], dtype=np.int32)
+    def boundary_vertices(self): return np.array([[-1,-1],[1,-1],[1,1],[-1,1]], dtype=np.float64)
+    def boundary_segments(self): return np.array([[0,1],[1,2],[2,3],[3,0]], dtype=np.int32)
     def bc_type(self, i): return 1.0 if i in (0,1) else 0.0
-    def holes(self): return np.zeros((0,2), dtype=np.float64)
 
 class CircleDomain(BaseDomain):
     def __init__(self, n_bd=64): self._n = n_bd
@@ -57,7 +48,6 @@ class CircleDomain(BaseDomain):
         n = self._n
         return np.column_stack([np.arange(n), (np.arange(n)+1)%n]).astype(np.int32)
     def bc_type(self, i): return 1.0
-    def holes(self): return np.zeros((0,2), dtype=np.float64)
 
 class CircleMixedDomain(BaseDomain):
     def __init__(self, n_bd=64): self._n = n_bd
@@ -73,27 +63,20 @@ class CircleMixedDomain(BaseDomain):
         t = np.linspace(0, 2*math.pi, self._n, endpoint=False)
         mid_angle = 0.5*(t[i] + t[(i+1)%self._n])
         return 1.0 if math.sin(mid_angle) > 0 else 0.0
-    def holes(self): return np.zeros((0,2), dtype=np.float64)
 
 class LShapeDomain(BaseDomain):
     @property
     def name(self): return "l_shape"
-    def boundary_vertices(self):
-        return np.array([[-1,-1],[0,-1],[0,0],[1,0],[1,1],[-1,1]], dtype=np.float64)
-    def boundary_segments(self):
-        n = 6; return np.column_stack([np.arange(n),(np.arange(n)+1)%n]).astype(np.int32)
+    def boundary_vertices(self): return np.array([[-1,-1],[0,-1],[0,0],[1,0],[1,1],[-1,1]], dtype=np.float64)
+    def boundary_segments(self): n = 6; return np.column_stack([np.arange(n),(np.arange(n)+1)%n]).astype(np.int32)
     def bc_type(self, i): return 1.0
-    def holes(self): return np.zeros((0,2), dtype=np.float64)
 
 class LShapeMixedDomain(BaseDomain):
     @property
     def name(self): return "l_shape_mixed"
-    def boundary_vertices(self):
-        return np.array([[-1,-1],[0,-1],[0,0],[1,0],[1,1],[-1,1]], dtype=np.float64)
-    def boundary_segments(self):
-        n = 6; return np.column_stack([np.arange(n),(np.arange(n)+1)%n]).astype(np.int32)
+    def boundary_vertices(self): return np.array([[-1,-1],[0,-1],[0,0],[1,0],[1,1],[-1,1]], dtype=np.float64)
+    def boundary_segments(self): n = 6; return np.column_stack([np.arange(n),(np.arange(n)+1)%n]).astype(np.int32)
     def bc_type(self, i): return 1.0 if i in (0,3,4,5) else 0.0
-    def holes(self): return np.zeros((0,2), dtype=np.float64)
 
 class HollowSquareDomain(BaseDomain):
     @property
@@ -102,10 +85,8 @@ class HollowSquareDomain(BaseDomain):
         o = np.array([[-1,-1],[1,-1],[1,1],[-1,1]], dtype=np.float64)
         i = np.array([[-0.5,-0.5],[0.5,-0.5],[0.5,0.5],[-0.5,0.5]], dtype=np.float64)
         return np.vstack([o, i])
-    def boundary_segments(self):
-        return np.array([[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4]], dtype=np.int32)
+    def boundary_segments(self): return np.array([[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4]], dtype=np.int32)
     def bc_type(self, i): return 1.0
-    def holes(self): return np.array([[0.0,0.0]], dtype=np.float64)
 
 class HollowSquareMixedDomain(BaseDomain):
     @property
@@ -114,30 +95,22 @@ class HollowSquareMixedDomain(BaseDomain):
         o = np.array([[-1,-1],[1,-1],[1,1],[-1,1]], dtype=np.float64)
         i = np.array([[-0.5,-0.5],[0.5,-0.5],[0.5,0.5],[-0.5,0.5]], dtype=np.float64)
         return np.vstack([o, i])
-    def boundary_segments(self):
-        return np.array([[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4]], dtype=np.int32)
+    def boundary_segments(self): return np.array([[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4]], dtype=np.int32)
     def bc_type(self, i): return 1.0 if i < 4 else 0.0
-    def holes(self): return np.array([[0.0,0.0]], dtype=np.float64)
 
 class PShapeDomain(BaseDomain):
     @property
     def name(self): return "p_shape"
-    def boundary_vertices(self):
-        return np.array([[0.5,-1],[1,-1],[1,1],[-1,1],[-1,-1],[-0.5,-1],[-0.5,0.5],[0.5,0.5]], dtype=np.float64)
-    def boundary_segments(self):
-        n = 8; return np.column_stack([np.arange(n),(np.arange(n)+1)%n]).astype(np.int32)
+    def boundary_vertices(self): return np.array([[0.5,-1],[1,-1],[1,1],[-1,1],[-1,-1],[-0.5,-1],[-0.5,0.5],[0.5,0.5]], dtype=np.float64)
+    def boundary_segments(self): n = 8; return np.column_stack([np.arange(n),(np.arange(n)+1)%n]).astype(np.int32)
     def bc_type(self, i): return 1.0
-    def holes(self): return np.zeros((0,2), dtype=np.float64)
 
 class PShapeMixedDomain(BaseDomain):
     @property
     def name(self): return "p_shape_mixed"
-    def boundary_vertices(self):
-        return np.array([[0.5,-1],[1,-1],[1,1],[-1,1],[-1,-1],[-0.5,-1],[-0.5,0.5],[0.5,0.5]], dtype=np.float64)
-    def boundary_segments(self):
-        n = 8; return np.column_stack([np.arange(n),(np.arange(n)+1)%n]).astype(np.int32)
+    def boundary_vertices(self): return np.array([[0.5,-1],[1,-1],[1,1],[-1,1],[-1,-1],[-0.5,-1],[-0.5,0.5],[0.5,0.5]], dtype=np.float64)
+    def boundary_segments(self): n = 8; return np.column_stack([np.arange(n),(np.arange(n)+1)%n]).astype(np.int32)
     def bc_type(self, i): return 1.0 if i < 5 else 0.0
-    def holes(self): return np.zeros((0,2), dtype=np.float64)
 
 DOMAIN_REGISTRY: Dict[str, Type[BaseDomain]] = {
     "square": SquareDomain, "square_mixed": SquareMixedDomain,

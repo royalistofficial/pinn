@@ -1,6 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Iterator, Tuple
+from typing import Iterator
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 from geometry.quadrature import QuadratureData
@@ -47,12 +47,3 @@ class DataModule:
         while True:
             for b in self.bd_loader:
                 yield b
-
-    def scale_weights(self, xy_in, xy_bd, vol_w, surf_w):
-        return (vol_w * (self.N_in / len(xy_in)),
-                surf_w * (self.N_bd / len(xy_bd)))
-
-    def full_eval_tensors(self):
-        xq = self.sample.quad.xy_in.clone().requires_grad_(True)
-        xb = self.sample.quad.xy_bd.clone().requires_grad_(True)
-        return xq, xb

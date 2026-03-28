@@ -25,12 +25,5 @@ class PhaseMetrics:
         return len(self.epoch)
 
 class MetricsHistory:
-    PRETRAIN_KEYS = [
-        "loss", "pde", "dir_loss", "neu_loss",
-        "energy", "rel_err", "rel_energy", "lr",
-        "w_pde", "w_dirichlet", "w_neumann",
-        "l2_pred", "energy_pred",
-    ]
-
     def __init__(self):
         self.pretrain = PhaseMetrics()

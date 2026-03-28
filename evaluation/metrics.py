@@ -4,7 +4,6 @@ from typing import Dict
 
 from problems.solutions import AnalyticalSolution
 from functionals.integrals import domain_integral
-from functionals.operators import gradient
 
 class MetricsCalculator:
     def __init__(self, solution: AnalyticalSolution):
