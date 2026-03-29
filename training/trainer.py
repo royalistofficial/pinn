@@ -45,7 +45,6 @@ class Trainer:
             config = CURRENT_ARCHITECTURE_CONFIG
 
         self.pinn = PINN(config).to(DEVICE)
-        self.pinn.plot_model_summary(os.path.join(OUTPUT_DIR, "model_summary.png"))
 
         self.opt_adam = torch.optim.Adam(self.pinn.parameters(), lr=ADAM_LR)
 
@@ -102,7 +101,7 @@ class Trainer:
         except Exception:
             return 1.0
 
-    def train(self) -> None:
+    def train(self, patience: int = 50) -> None:
         self.logger.section(
             f"Training PINN | Phase 1: Adam ({ADAM_EPOCHS} ep) | Phase 2: L-BFGS ({LBFGS_EPOCHS} ep)"
         )
@@ -110,6 +109,7 @@ class Trainer:
         self._run_ntk_analysis(0)
         self.callback._plot_fields(0)
         best_loss = float("inf")
+        patience_counter = 0
         bd_iter = iter(self.data.boundary_iter())
 
         self.pinn.train()
@@ -124,11 +124,18 @@ class Trainer:
                 self.callback.on_epoch_end(ep, lr=self.lr, **loss_info)
                 if avg_loss < best_loss:
                     best_loss = avg_loss
-                    self._save_model(best_loss)
+                    patience_counter = 0
+                else:
+                    patience_counter += 1
 
             if ep % NTK_ANALYSIS_EVERY == 0:
                 self._run_ntk_analysis(ep)
+            
+            if patience_counter >= patience:
+                self.logger(f"[Early Stopping] Adam остановлен на эпохе {ep} (нет улучшений {patience} эпох).")
+                break
 
+        patience_counter = 0
         if LBFGS_EPOCHS > 0:
             self.logger.section("PHASE 2: L-BFGS OPTIMIZATION")
             self.lr = LBFGS_LR
@@ -141,10 +148,18 @@ class Trainer:
                     self.callback.on_epoch_end(ep, lr=self.lr, **loss_info)
                     if avg_loss < best_loss:
                         best_loss = avg_loss
-                        self._save_model(best_loss)
+                        patience_counter = 0
+                    else:
+                        patience_counter += 1
 
                 if ep % NTK_ANALYSIS_EVERY == 0:
                     self._run_ntk_analysis(ep)
+
+                if patience_counter >= patience:
+                    self.logger(f"[Early Stopping] Adam остановлен на эпохе {ep} (нет улучшений {patience} эпох).")
+                    break
+        
+        self._save_model()
 
         self.callback.on_training_end()
         self._finalize()
@@ -211,38 +226,6 @@ class Trainer:
             "neu_loss": loss_dict_tracker.get("neumann", 0.0),
         }
 
-    def _train_epoch(self, bd_iter) -> dict:
-        ep_loss = ep_pde = ep_dir = ep_neu = 0.0
-        n_batches = len(self.data.in_loader)
-
-        for batch_in in self.data.in_loader:
-            xy_in, f_in, vol_w, tri_idx, idx_in = batch_in
-            batch_bd = next(bd_iter)
-            xy_bd, normals, g_D, g_N, bc_mask, surf_w, tri_idx_bd, _ = batch_bd
-
-            self.opt_pinn.zero_grad(set_to_none=True)
-            xq = xy_in.clone().requires_grad_(True)
-            xb = xy_bd.clone().requires_grad_(True)
-
-            loss_dict = self._compute_loss(xq, xb, f_in, normals, g_D, g_N, bc_mask)
-            loss = loss_dict["total"]
-
-            loss.backward()
-            nn.utils.clip_grad_norm_(self.pinn.parameters(), 1.0)
-            self.opt_pinn.step()
-
-            ep_loss += loss.item()
-            ep_pde  += loss_dict["pde"].item()
-            ep_dir  += loss_dict["dirichlet"].item()
-            ep_neu  += loss_dict["neumann"].item()
-
-        return {
-            "loss": ep_loss / n_batches,
-            "pde": ep_pde / n_batches,
-            "dir_loss": ep_dir / n_batches,
-            "neu_loss": ep_neu / n_batches,
-        }
-
     def _compute_loss(
                 self,
                 xq: torch.Tensor,
@@ -291,14 +274,14 @@ class Trainer:
             "neumann": loss_neu,
         }
 
-    def _save_model(self, loss: float) -> None:
+    def _save_model(self) -> None:
         save_path = os.path.join(
             OUTPUT_DIR,
             f"{self.callback.domain_name}_best_pinn.pth",
         )
         os.makedirs(OUTPUT_DIR, exist_ok=True)
         torch.save(self.pinn.state_dict(), save_path)
-        self.logger(f"[Model Saved] Best loss: {loss:.4e}")
+        self.logger(f"[Model Saved]")
 
     def _run_ntk_analysis(self, epoch: int) -> None:
         quad = self.data.sample.quad

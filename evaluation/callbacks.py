@@ -136,7 +136,7 @@ class TrainingCallback:
                 os.path.join(OUTPUT_DIR, f"{self.domain_name}_metrics.png"),
             )
 
-        if self.plot_every == 0:
+        if epoch % self.plot_every == 0:
             self._plot_fields(epoch)
 
         return ee
