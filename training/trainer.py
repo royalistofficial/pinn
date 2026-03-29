@@ -122,11 +122,11 @@ class Trainer:
 
             if ep == 1 or ep % 10 == 0:
                 self.callback.on_epoch_end(ep, lr=self.lr, **loss_info)
-                if avg_loss < best_loss:
-                    best_loss = avg_loss
-                    patience_counter = 0
-                else:
-                    patience_counter += 1
+            if avg_loss < best_loss:
+                best_loss = avg_loss
+                patience_counter = 0
+            else:
+                patience_counter += 1
 
             if ep % NTK_ANALYSIS_EVERY == 0:
                 self._run_ntk_analysis(ep)
@@ -146,11 +146,11 @@ class Trainer:
 
                 if ep % 10 == 0:
                     self.callback.on_epoch_end(ep, lr=self.lr, **loss_info)
-                    if avg_loss < best_loss:
-                        best_loss = avg_loss
-                        patience_counter = 0
-                    else:
-                        patience_counter += 1
+                if avg_loss < best_loss:
+                    best_loss = avg_loss
+                    patience_counter = 0
+                else:
+                    patience_counter += 1
 
                 if ep % NTK_ANALYSIS_EVERY == 0:
                     self._run_ntk_analysis(ep)
