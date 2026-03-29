@@ -8,7 +8,7 @@ GAUSS_TRI_ORDER = 5
 GAUSS_LINE_ORDER = 5         
 BOUNDARY_DENSITY_PTS = 100   
 
-ADAM_LR = 1e-4            
+ADAM_LR = 1e-2            
 ADAM_EPOCHS = 500          
 
 LBFGS_EPOCHS = 500          
