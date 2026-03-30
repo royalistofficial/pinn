@@ -128,19 +128,21 @@ class TrainingCallback:
 
             self.logger(log_msg)
 
-            plot_training_metrics(
-                self.history.pretrain.as_dict(),
-                self.domain_name,
-                os.path.join(OUTPUT_DIR, f"{self.domain_name}_metrics.png"),
-            )
-
         return ee
+    
+    def plot_metrics(self, ep_adam: int) -> None:
+        plot_training_metrics(
+            self.history.pretrain.as_dict(),
+            self.domain_name,
+            os.path.join(OUTPUT_DIR, f"{self.domain_name}_metrics.png"),
+            ep_adam
+        )
 
     def on_training_end(self) -> None:
         best = min(self.history.pretrain.data.get("energy", [float("inf")]))
         self.logger(f"Training completed. Best energy error: E={best:.4e}")
 
-    def _plot_fields(self, epoch: int) -> None:
+    def plot_fields(self, epoch: int) -> None:
         mesh = self.data.sample.quad.mesh
         tri_refi, pts_refi = refine_mesh(mesh)
 

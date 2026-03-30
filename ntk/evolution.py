@@ -79,7 +79,7 @@ def plot_ntk_evolution(history: list, output_dir: str = "data") -> str:
     cbar.set_label("Эпоха")
     ax4.set_title("Эволюция спектра PDE (K_L)", fontweight="bold")
     ax4.set_xlabel("Индекс k")
-    ax4.set_ylabel("$\log_{10}(\lambda_k)$")
+    ax4.set_ylabel("$\\log_{10}(\\lambda_k)$")
     ax4.grid(True, alpha=0.4)
 
     fig.suptitle("Эволюция характеристик NTK в процессе обучения", fontsize=16, fontweight="bold", y=0.98)

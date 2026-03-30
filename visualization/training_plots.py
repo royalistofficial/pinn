@@ -65,7 +65,7 @@ def _save_fig(fig, path, dpi=180):
     fig.savefig(path, dpi=dpi, facecolor="white", bbox_inches="tight")
     plt.close(fig)
 
-def plot_training_metrics(history: Dict, domain: str, path: str) -> None:
+def plot_training_metrics(history: Dict, domain: str, path: str, ep_adam: None | int) -> None:
     if len(history.get("epoch", [])) < 2:
         return
 
@@ -140,6 +140,19 @@ def plot_training_metrics(history: Dict, domain: str, path: str) -> None:
         f"Метрики обучения PINN ({domain})",
         fontsize=14, fontweight="700", color=COLORS["text"], y=1.01
     )
+
+    if ep_adam is not None and ep_adam > 0:
+        for ax_row in axes:
+            for ax in ax_row:
+                ax.axvline(
+                    x=ep_adam,
+                    linestyle="--",
+                    linewidth=1.5,
+                    alpha=0.8,
+                    color="black",
+                    label="Adam → L-BFGS"
+                )
+                
     _save_fig(fig, path)
 
 def plot_solution_fields(

@@ -7,9 +7,9 @@ import numpy as np
 class WeightConfig:
     enabled: bool = False
     update_every: int = 100
-    momentum: float = 0.
-    min_weight: float = 1e-3
-    max_weight: float = 1e+3
+    momentum: float = 0.9
+    min_weight = 1e-2
+    max_weight = 1e+2
 
     w_pde_init: float = 1.0
     w_dirichlet_init: float = 1.0

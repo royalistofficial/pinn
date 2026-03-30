@@ -121,7 +121,7 @@ def plot_ntk_master_dashboard(
     cond_vals = [np.log10(max(data["metrics"]["condition_number"], 1)) for _, data in comps]
     bars1 = ax7.bar(names, cond_vals, color=colors, alpha=0.8)
     ax7.set_title("7. Число обусловленности (log10 κ)", fontweight='bold')
-    ax7.set_ylabel("$\\log_{10}(\kappa)$")
+    ax7.set_ylabel("$\\log_{10}(\\kappa)$")
     ax7.tick_params(axis='x', rotation=12, labelsize=9)
     for bar, val in zip(bars1, cond_vals):
         ax7.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.1, 

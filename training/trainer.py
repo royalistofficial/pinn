@@ -106,60 +106,33 @@ class Trainer:
             f"Training PINN | Phase 1: Adam ({ADAM_EPOCHS} ep) | Phase 2: L-BFGS ({LBFGS_EPOCHS} ep)"
         )
 
-        self._run_ntk_analysis(0)
-        self.callback._plot_fields(0)
+        ep = 0
+        ep_adam = None
         best_loss = float("inf")
         patience_counter = 0
+        loss_info = None  
         bd_iter = iter(self.data.boundary_iter())
 
         self.pinn.train()
 
-        self.logger.section("PHASE 1: ADAM OPTIMIZATION")
-        self.lr = ADAM_LR
-        ep = 0
-        for _ in range(1, ADAM_EPOCHS + 1):
-            ep += 1
-            loss_info = self._train_epoch_adam(bd_iter)
-            avg_loss = loss_info["loss"]
+        self._run_ntk_analysis(0)
+        self.callback.plot_fields(0)
 
-            if ep == 1 or ep % 10 == 0:
-                self.callback.on_epoch_end(ep, lr=self.lr, **loss_info)
-
-            if ep % 100 == 0:
-                self.callback._plot_fields(ep)
-
-            if avg_loss < best_loss:
-                best_loss = avg_loss
-                patience_counter = 0
-            else:
-                patience_counter += 1
-
-            if ep % NTK_ANALYSIS_EVERY == 0:
-                self._run_ntk_analysis(ep)
-
-            if patience_counter >= patience:
-                self.logger(f"[Early Stopping] Adam остановлен на эпохе {ep} (нет улучшений {patience} эпох).")
-                break
-
-        if LBFGS_EPOCHS > 0:
-            self.callback.on_epoch_end(ep, lr=self.lr, **loss_info)
-            self.callback._plot_fields(ep)
-            self._run_ntk_analysis(ep)
-
-            self.logger.section("PHASE 2: L-BFGS OPTIMIZATION")
-            self.lr = LBFGS_LR
+        if ADAM_EPOCHS > 0:
+            self.logger.section("PHASE 1: ADAM OPTIMIZATION")
+            self.lr = ADAM_LR
             patience_counter = 0
 
-            for _ in range(ep + 1, ep + LBFGS_EPOCHS + 1):
+            for _ in range(ADAM_EPOCHS):
                 ep += 1
-                loss_info = self._train_epoch_lbfgs(bd_iter)
+                loss_info = self._train_epoch_adam(bd_iter)
                 avg_loss = loss_info["loss"]
 
-                if ep % 10 == 0:
+                if ep == 1 or ep % 1 == 0:
                     self.callback.on_epoch_end(ep, lr=self.lr, **loss_info)
 
                 if ep % 100 == 0:
-                    self.callback._plot_fields(ep)
+                    self.callback.plot_fields(ep)
 
                 if avg_loss < best_loss:
                     best_loss = avg_loss
@@ -171,15 +144,58 @@ class Trainer:
                     self._run_ntk_analysis(ep)
 
                 if patience_counter >= patience:
-                    self.logger(f"[Early Stopping] Adam остановлен на эпохе {ep} (нет улучшений {patience} эпох).")
+                    self.logger(
+                        f"[Early Stopping] Adam остановлен на эпохе {ep} "
+                        f"(нет улучшений {patience} эпох)."
+                    )
                     break
 
-        self.callback.on_epoch_end(ep, lr=self.lr, **loss_info)
-        self.callback._plot_fields(ep)
-        self._run_ntk_analysis(ep)
+        if LBFGS_EPOCHS > 0:
+            self.logger.section("PHASE 2: L-BFGS OPTIMIZATION")
+            self.lr = LBFGS_LR
+            ep_adam = ep
+            patience_counter = 0
 
+            if ADAM_EPOCHS > 0 and loss_info is not None:
+                self.callback.on_epoch_end(ep, lr=self.lr, **loss_info)
+                self.callback.plot_fields(ep)
+                self._run_ntk_analysis(ep)
+
+            for _ in range(LBFGS_EPOCHS):
+                ep += 1
+                loss_info = self._train_epoch_lbfgs(bd_iter)
+                avg_loss = loss_info["loss"]
+
+                if ep % 1 == 0:
+                    self.callback.on_epoch_end(ep, lr=self.lr, **loss_info)
+
+                if ep % 100 == 0:
+                    self.callback.plot_fields(ep)
+
+                if avg_loss < best_loss:
+                    best_loss = avg_loss
+                    patience_counter = 0
+                else:
+                    patience_counter += 1
+
+                if ep % NTK_ANALYSIS_EVERY == 0:
+                    self._run_ntk_analysis(ep)
+
+                if patience_counter >= patience:
+                    self.logger(
+                        f"[Early Stopping] L-BFGS остановлен на эпохе {ep} "
+                        f"(нет улучшений {patience} эпох)."
+                    )
+                    break
+
+        if loss_info is not None:
+            self.callback.on_epoch_end(ep, lr=self.lr, **loss_info)
+            self.callback.plot_fields(ep)
+            self._run_ntk_analysis(ep)
+        else:
+            self.logger("[Warning] Обучение не выполнялось (0 эпох).")
+        self.callback.plot_metrics(ep_adam)
         self._save_model()
-
         self.callback.on_training_end()
         self._finalize()
 
@@ -244,6 +260,25 @@ class Trainer:
             "dir_loss": loss_dict_tracker.get("dirichlet", 0.0),
             "neu_loss": loss_dict_tracker.get("neumann", 0.0),
         }
+    
+    def grad_norm(self, loss: torch.Tensor) -> float:
+        self.pinn.zero_grad()
+        loss.backward(retain_graph=True)
+
+        grads = []
+
+        for p in self.pinn.parameters():
+            if p.grad is not None:
+                grads.append(p.grad.detach().view(-1))
+
+        if len(grads) == 0:
+            return 0.0
+
+        grad_vector = torch.cat(grads)
+
+        norm = torch.norm(grad_vector, p=2)
+
+        return norm.item()
 
     def _compute_loss(
                 self,
@@ -276,20 +311,12 @@ class Trainer:
             loss_neu = (diff_N ** 2 * neu_mask).sum() / (neu_mask.sum() + 1e-8)
 
         if AUTO_BALANCE_ENABLED:
-
-            self.pinn.zero_grad()
-            loss_pde.backward(retain_graph=True)
-            grad_pde_norm = sum(p.grad.norm()**2 for p in self.pinn.parameters() if p.grad is not None).sqrt().item()
-
-            self.pinn.zero_grad()
-            loss_dir.backward(retain_graph=True)
-            grad_dir_norm = sum(p.grad.norm()**2 for p in self.pinn.parameters() if p.grad is not None).sqrt().item()
+            grad_pde_norm = self.grad_norm(loss_pde)
+            grad_dir_norm =  self.grad_norm(loss_dir)
 
             grad_neu_norm = 0.0
             if self.has_neumann:
-                self.pinn.zero_grad()
-                loss_neu.backward(retain_graph=True)
-                grad_neu_norm = sum(p.grad.norm()**2 for p in self.pinn.parameters() if p.grad is not None).sqrt().item()
+                grad_neu_norm =  self.grad_norm(loss_neu)
 
             w_pde, w_dir, w_neu = self.weight_balancer.update_from_gradients(
                 grad_pde_norm, grad_dir_norm, grad_neu_norm, bc_penalty=BC_PENALTY

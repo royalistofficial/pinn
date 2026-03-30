@@ -3,10 +3,10 @@ import torch
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 OUTPUT_DIR = "data"
 
-DEFAULT_TRI_AREA = 0.05      
-GAUSS_TRI_ORDER = 5          
-GAUSS_LINE_ORDER = 5         
-BOUNDARY_DENSITY_PTS = 100   
+DEFAULT_TRI_AREA = 0.05
+GAUSS_TRI_ORDER = 5
+GAUSS_LINE_ORDER = 2
+BOUNDARY_DENSITY_PTS = 100
 
 ADAM_LR = 1e-2            
 ADAM_EPOCHS = 500          
