@@ -30,14 +30,12 @@ class TrainingCallback:
                 metrics_calculator: Optional[MetricsCalculator] = None,
                 weight_balancer: Optional["WeightBalancer"] = None,
                 ntk_analyzer: Optional["NTKAnalyzer"] = None,
-                plot_every: int = 100,
             ):
         self.pinn = pinn
         self.data = data
         self.solution = solution
         self.logger = logger
         self.domain_name = domain_name
-        self.plot_every = plot_every
         self.weight_balancer = weight_balancer
         self.ntk_analyzer = ntk_analyzer
 
@@ -135,9 +133,6 @@ class TrainingCallback:
                 self.domain_name,
                 os.path.join(OUTPUT_DIR, f"{self.domain_name}_metrics.png"),
             )
-
-        if epoch % self.plot_every == 0:
-            self._plot_fields(epoch)
 
         return ee
 

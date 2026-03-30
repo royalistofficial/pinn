@@ -36,7 +36,7 @@ class NetworkConfig:
             raise ValueError(f"n_layers must be positive, got {self.n_layers}")
 
     @classmethod
-    def mlp(cls, hidden_dim: int = 64, n_layers: int = 4, 
+    def mlp(cls, hidden_dim: int = 28, n_layers: int = 3, 
             activation: str = "tanh", **kwargs) -> "NetworkConfig":
         return cls(
             architecture="mlp",
@@ -47,7 +47,7 @@ class NetworkConfig:
         )
 
     @classmethod
-    def siren(cls, hidden_dim: int = 64, n_layers: int = 4,
+    def siren(cls, hidden_dim: int = 28, n_layers: int = 3,
               w0: float = 30.0, **kwargs) -> "NetworkConfig":
         return cls(
             architecture="siren",
@@ -58,9 +58,9 @@ class NetworkConfig:
         )
 
     @classmethod
-    def fourier(cls, hidden_dim: int = 64, n_layers: int = 4,
-                features: int = 256, sigma: float = 10.0,
-                trainable: bool = False, **kwargs) -> "NetworkConfig":
+    def fourier(cls, hidden_dim: int = 16, n_layers: int = 3,
+                features: int = 8, sigma: float = 10.0,
+                trainable: bool = True, **kwargs) -> "NetworkConfig":
         return cls(
             architecture="fourier",
             hidden_dim=hidden_dim,
@@ -72,7 +72,7 @@ class NetworkConfig:
         )
 
     @classmethod
-    def kan(cls, hidden_dim: int = 18, n_layers: int = 2,
+    def kan(cls, hidden_dim: int = 16, n_layers: int = 2,
             degree: int = 5, **kwargs) -> "NetworkConfig":
         return cls(
             architecture="kan",
@@ -83,7 +83,7 @@ class NetworkConfig:
         )
 
     @classmethod
-    def pi_dbsn(cls, hidden_dim: int = 15, n_layers: int = 2,
+    def pi_dbsn(cls, hidden_dim: int = 12, n_layers: int = 2,
                 grid_size: int = 5, spline_order: int = 3, **kwargs) -> "NetworkConfig":
         return cls(
             architecture="pi-dbsn",
@@ -95,7 +95,7 @@ class NetworkConfig:
         )
 
     @classmethod
-    def rbf_kan(cls, hidden_dim: int = 18, n_layers: int = 2,
+    def rbf_kan(cls, hidden_dim: int = 16, n_layers: int = 2,
                 num_centers: int = 5, **kwargs) -> "NetworkConfig":
         return cls(
             architecture="rbf-kan",
@@ -106,7 +106,7 @@ class NetworkConfig:
         )
 
     @classmethod
-    def wav_kan(cls, hidden_dim: int = 18, n_layers: int = 2,
+    def wav_kan(cls, hidden_dim: int = 16, n_layers: int = 2,
                 num_wavelets: int = 5, **kwargs) -> "NetworkConfig":
         return cls(
             architecture="wav-kan",
@@ -116,26 +116,28 @@ class NetworkConfig:
             **kwargs
         )
 
-DEFAULT_CONFIG = NetworkConfig.mlp()
+DEFAULT_CONFIG = NetworkConfig.pi_dbsn()
 
 PRESET_CONFIGS = {
-    "mlp": NetworkConfig.mlp(hidden_dim=32, n_layers=3),
-    "siren": NetworkConfig.siren(hidden_dim=32, n_layers=3, w0=20.0),
-    "fourier": NetworkConfig.fourier(hidden_dim=8, n_layers=2, features=32),
-    "kan": NetworkConfig.kan(hidden_dim=18, n_layers=2),
-    "pi-dbsn": NetworkConfig.pi_dbsn(hidden_dim=15, n_layers=2),
-    "rbf-kan": NetworkConfig.rbf_kan(hidden_dim=18, n_layers=2),
-    "wav-kan": NetworkConfig.wav_kan(hidden_dim=18, n_layers=2),
+    "mlp": NetworkConfig.mlp(),
+    "siren": NetworkConfig.siren(),
+    "fourier": NetworkConfig.fourier(),
+    "kan": NetworkConfig.kan(),
+    "pi-dbsn": NetworkConfig.pi_dbsn(),
+    "rbf-kan": NetworkConfig.rbf_kan(),
+    "wav-kan": NetworkConfig.wav_kan(),
 }
 
-def get_config(name: str = "mlp", **overrides) -> NetworkConfig:
-    if name not in PRESET_CONFIGS:
-        raise ValueError(f"Unknown config '{name}'. Available: {list(PRESET_CONFIGS)}")
+def get_config(name: Optional[str] = None, **overrides) -> NetworkConfig:
 
-    config = PRESET_CONFIGS[name]
+    if name is None:
+        config = DEFAULT_CONFIG
+    else:
+        if name not in PRESET_CONFIGS:
+            raise ValueError(f"Unknown config '{name}'. Available: {list(PRESET_CONFIGS)}")
+        config = PRESET_CONFIGS[name]
 
     if overrides:
-
         data = {k: v for k, v in config.__dict__.items()}
         data.update(overrides)
         return NetworkConfig(**data)

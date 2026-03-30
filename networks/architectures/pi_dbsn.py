@@ -22,11 +22,12 @@ class BSplineLayer(nn.Module):
         self.base_activation = nn.SiLU()
 
         step = 2.0 / grid_size
+
         grid = torch.arange(
-            -grid_size - spline_order, 
+            -spline_order, 
             grid_size + spline_order + 1, 
             dtype=torch.float32
-        ) * step
+        ) * step - 1.0
 
         self.register_buffer("grid", grid.repeat(in_dim, 1))
 
@@ -65,8 +66,15 @@ class BSplineLayer(nn.Module):
         return y
 
 class PIDBSN(nn.Module):
-    def __init__(self, in_dim: int = 2, out_dim: int = 1, hidden_dim: int = 64, n_layers: int = 4, grid_size: int = 5, spline_order: int = 3):
+    def __init__(self, config):
         super().__init__()
+
+        in_dim = getattr(config, 'in_dim', 2)
+        out_dim = getattr(config, 'out_dim', 1)
+        hidden_dim = getattr(config, 'hidden_dim', 64)
+        n_layers = getattr(config, 'n_layers', 4)
+        grid_size = getattr(config, 'dbsn_grid_size', 5)
+        spline_order = getattr(config, 'dbsn_spline_order', 3)
 
         self.layers = nn.ModuleList()
 
@@ -81,7 +89,7 @@ class PIDBSN(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
 
-        h = 0.95 * x 
+        h = x 
         for layer in self.layers:
             h = layer(h)
         return self.head(h)

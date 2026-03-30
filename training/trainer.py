@@ -41,8 +41,8 @@ class Trainer:
         self.data = DataModule(sample, batch_size=min(batch_size, len(quad.xy_in)))
 
         if config is None:
-            from networks.architectures import CURRENT_ARCHITECTURE_CONFIG
-            config = CURRENT_ARCHITECTURE_CONFIG
+            from networks.configs import DEFAULT_CONFIG
+            config = DEFAULT_CONFIG
 
         self.pinn = PINN(config).to(DEVICE)
 
@@ -116,12 +116,18 @@ class Trainer:
 
         self.logger.section("PHASE 1: ADAM OPTIMIZATION")
         self.lr = ADAM_LR
-        for ep in range(1, ADAM_EPOCHS + 1):
+        ep = 0
+        for _ in range(1, ADAM_EPOCHS + 1):
+            ep += 1
             loss_info = self._train_epoch_adam(bd_iter)
             avg_loss = loss_info["loss"]
 
             if ep == 1 or ep % 10 == 0:
                 self.callback.on_epoch_end(ep, lr=self.lr, **loss_info)
+
+            if ep % 100 == 0:
+                self.callback._plot_fields(ep)
+
             if avg_loss < best_loss:
                 best_loss = avg_loss
                 patience_counter = 0
@@ -130,22 +136,31 @@ class Trainer:
 
             if ep % NTK_ANALYSIS_EVERY == 0:
                 self._run_ntk_analysis(ep)
-            
+
             if patience_counter >= patience:
                 self.logger(f"[Early Stopping] Adam остановлен на эпохе {ep} (нет улучшений {patience} эпох).")
                 break
 
-        patience_counter = 0
         if LBFGS_EPOCHS > 0:
+            self.callback.on_epoch_end(ep, lr=self.lr, **loss_info)
+            self.callback._plot_fields(ep)
+            self._run_ntk_analysis(ep)
+
             self.logger.section("PHASE 2: L-BFGS OPTIMIZATION")
             self.lr = LBFGS_LR
+            patience_counter = 0
 
-            for ep in range(ADAM_EPOCHS + 1, ADAM_EPOCHS + LBFGS_EPOCHS + 1):
+            for _ in range(ep + 1, ep + LBFGS_EPOCHS + 1):
+                ep += 1
                 loss_info = self._train_epoch_lbfgs(bd_iter)
                 avg_loss = loss_info["loss"]
 
                 if ep % 10 == 0:
                     self.callback.on_epoch_end(ep, lr=self.lr, **loss_info)
+
+                if ep % 100 == 0:
+                    self.callback._plot_fields(ep)
+
                 if avg_loss < best_loss:
                     best_loss = avg_loss
                     patience_counter = 0
@@ -158,7 +173,11 @@ class Trainer:
                 if patience_counter >= patience:
                     self.logger(f"[Early Stopping] Adam остановлен на эпохе {ep} (нет улучшений {patience} эпох).")
                     break
-        
+
+        self.callback.on_epoch_end(ep, lr=self.lr, **loss_info)
+        self.callback._plot_fields(ep)
+        self._run_ntk_analysis(ep)
+
         self._save_model()
 
         self.callback.on_training_end()

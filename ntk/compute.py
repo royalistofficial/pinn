@@ -1,29 +1,30 @@
 import torch
 import torch.nn as nn
+from torch.func import functional_call, vmap, jacrev, hessian
 from typing import Optional
+
+def _get_functional_params(model: nn.Module):
+    params = {k: v for k, v in model.named_parameters() if v.requires_grad}
+    buffers = dict(model.named_buffers())
+    return params, buffers
 
 def compute_jacobian(model: nn.Module, X: torch.Tensor) -> torch.Tensor:
     was_training = model.training
     model.eval()
-    N = X.shape[0]
-    params = [p for p in model.parameters() if p.requires_grad]
-    P = sum(p.numel() for p in params)
-    J = torch.zeros(N, P, device=X.device)
 
-    with torch.enable_grad():
-        for i in range(N):
-            model.zero_grad()
-            xi = X[i:i + 1].detach().clone().requires_grad_(False)
-            out = model(xi).squeeze()
-            out.backward(retain_graph=False)
-            row = []
-            for p in params:
-                if p.grad is not None:
-                    row.append(p.grad.detach().clone().flatten())
-                    p.grad.zero_()
-                else:
-                    row.append(torch.zeros(p.numel(), device=X.device))
-            J[i] = torch.cat(row)
+    params, buffers = _get_functional_params(model)
+
+    def fmodel(p, b, x):
+        return functional_call(model, (p, b), (x.unsqueeze(0),)).squeeze()
+
+    def compute_single_jacobian(p, b, x):
+        def f(weights):
+            return fmodel(weights, b, x)
+        return jacrev(f)(p)
+
+    jac_dict = vmap(compute_single_jacobian, in_dims=(None, None, 0))(params, buffers, X)
+
+    J = torch.cat([j.flatten(start_dim=1) for j in jac_dict.values()], dim=1).detach()
 
     if was_training:
         model.train()
@@ -32,30 +33,27 @@ def compute_jacobian(model: nn.Module, X: torch.Tensor) -> torch.Tensor:
 def compute_pde_jacobian(model: nn.Module, X: torch.Tensor) -> torch.Tensor:
     was_training = model.training
     model.eval()
-    N = X.shape[0]
-    params = [p for p in model.parameters() if p.requires_grad]
-    P = sum(p.numel() for p in params)
-    J_L = torch.zeros(N, P, device=X.device)
 
-    with torch.enable_grad():
-        for i in range(N):
-            model.zero_grad()
-            xi = X[i:i + 1].detach().clone().requires_grad_(True)
-            u = model(xi)
-            gu = torch.autograd.grad(u, xi, grad_outputs=torch.ones_like(u), create_graph=True)[0]
-            d2x = torch.autograd.grad(gu[:, 0:1], xi, grad_outputs=torch.ones_like(gu[:, 0:1]), create_graph=True)[0][:, 0]
-            d2y = torch.autograd.grad(gu[:, 1:2], xi, grad_outputs=torch.ones_like(gu[:, 1:2]), create_graph=True)[0][:, 1]
-            neg_lap = -(d2x + d2y)
-            neg_lap.sum().backward()
+    params, buffers = _get_functional_params(model)
 
-            row = []
-            for p in params:
-                if p.grad is not None:
-                    row.append(p.grad.detach().clone().flatten())
-                    p.grad.zero_()
-                else:
-                    row.append(torch.zeros(p.numel(), device=X.device))
-            J_L[i] = torch.cat(row)
+    def fmodel(p, b, x):
+        return functional_call(model, (p, b), (x.unsqueeze(0),)).squeeze()
+
+    def compute_single_pde_jacobian(p, b, x):
+
+        def pde_res(weights):
+            def u_fn(x_in):
+                return fmodel(weights, b, x_in)
+
+            H = hessian(u_fn)(x)
+
+            laplacian = H[0, 0] + H[1, 1] 
+            return -laplacian 
+
+        return jacrev(pde_res)(p)
+
+    jac_dict = vmap(compute_single_pde_jacobian, in_dims=(None, None, 0))(params, buffers, X)
+    J_L = torch.cat([j.flatten(start_dim=1) for j in jac_dict.values()], dim=1).detach()
 
     if was_training:
         model.train()
@@ -67,39 +65,38 @@ def compute_bc_jacobian(
         normals: Optional[torch.Tensor] = None,
         bc_type: str = "dirichlet"
     ) -> torch.Tensor:
+
     was_training = model.training
     model.eval()
-    N = xy_boundary.shape[0]
-    params = [p for p in model.parameters() if p.requires_grad]
-    P = sum(p.numel() for p in params)
 
-    if N == 0:
+    params, buffers = _get_functional_params(model)
+
+    if xy_boundary.shape[0] == 0:
+        P = sum(p.numel() for p in params.values())
         return torch.zeros(0, P, device=xy_boundary.device)
 
-    J_bc = torch.zeros(N, P, device=xy_boundary.device)
+    def fmodel(p, b, x):
+        return functional_call(model, (p, b), (x.unsqueeze(0),)).squeeze()
 
-    with torch.enable_grad():
-        for i in range(N):
-            model.zero_grad()
-            xi = xy_boundary[i:i + 1].detach().clone().requires_grad_(True)
-            if bc_type.lower() == "dirichlet":
-                u = model(xi).squeeze()
-                u.backward(retain_graph=False)
-            elif bc_type.lower() == "neumann":
-                u = model(xi)
-                grad_u = torch.autograd.grad(u, xi, grad_outputs=torch.ones_like(u), create_graph=True)[0]
-                n_i = normals[i:i + 1]
-                normal_derivative = (grad_u * n_i).sum()
-                normal_derivative.backward(retain_graph=False)
+    def compute_single_dirichlet(p, b, x):
+        def f(weights):
+            return fmodel(weights, b, x)
+        return jacrev(f)(p)
 
-            row = []
-            for p in params:
-                if p.grad is not None:
-                    row.append(p.grad.detach().clone().flatten())
-                    p.grad.zero_()
-                else:
-                    row.append(torch.zeros(p.numel(), device=xy_boundary.device))
-            J_bc[i] = torch.cat(row)
+    def compute_single_neumann(p, b, x, n):
+        def neu_res(weights):
+            def u_fn(x_in):
+                return fmodel(weights, b, x_in)
+            grad_x = jacrev(u_fn)(x)
+            return torch.dot(grad_x, n) 
+        return jacrev(neu_res)(p)
+
+    if bc_type.lower() == "dirichlet":
+        jac_dict = vmap(compute_single_dirichlet, in_dims=(None, None, 0))(params, buffers, xy_boundary)
+    elif bc_type.lower() == "neumann":
+        jac_dict = vmap(compute_single_neumann, in_dims=(None, None, 0, 0))(params, buffers, xy_boundary, normals)
+
+    J_bc = torch.cat([j.flatten(start_dim=1) for j in jac_dict.values()], dim=1).detach()
 
     if was_training:
         model.train()
@@ -107,6 +104,5 @@ def compute_bc_jacobian(
 
 def compute_ntk_from_jacobian(J: torch.Tensor) -> torch.Tensor:
     K = J @ J.T
-
     K = (K + K.T) / 2.0
     return K

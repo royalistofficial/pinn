@@ -55,9 +55,6 @@ class PINN(nn.Module):
     def __init__(self, config: NetworkConfig | dict):
         super().__init__()
 
-        if isinstance(config, dict):
-            config = NetworkConfig(**config)
-
         self.config = copy.deepcopy(config)
         self.model = PINNFactory.create(self.config)
 
