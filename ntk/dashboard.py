@@ -15,6 +15,8 @@ def plot_ntk_master_dashboard(
     gs = GridSpec(3, 3, figure=fig, hspace=0.35, wspace=0.25)
 
     comps = [(name, data) for name, data in components.items() if len(data["eigenvalues"]) > 0]
+    names = [name for name, _ in comps]
+    colors = [data["color"] for _, data in comps]
 
     ax1 = fig.add_subplot(gs[0, 0])
     for name, data in comps:
@@ -99,18 +101,18 @@ def plot_ntk_master_dashboard(
     ax5.grid(True, alpha=0.3)
 
     ax6 = fig.add_subplot(gs[1, 2])
-    for name, data in comps:
-        eig = data["eigenvalues"]
-        if len(eig) > 1:
-            k_idx = np.arange(1, len(eig))
-            log_eig = np.log10(eig)
-            spacing = -np.diff(log_eig)
-            ax6.plot(k_idx, spacing, color=data["color"], linewidth=1, alpha=0.7, label=name)
-    ax6.set_title("6. Интервалы $\\Delta \\log_{10}(\\lambda_k)$", fontweight='bold')
-    ax6.set_xlabel("Индекс $k$")
-    ax6.set_ylabel("Разность")
-    ax6.legend(fontsize=8)
-    ax6.grid(True, alpha=0.3)
+    trace_vals = [data["metrics"]["trace"] for _, data in comps]
+    
+    bars6 = ax6.bar(names, trace_vals, color=colors, alpha=0.8)
+    
+    ax6.set_title("6. След матрицы $\\text{Tr}(K)$", fontweight='bold')
+    ax6.set_ylabel("След (Энергия)")
+    ax6.tick_params(axis='x', rotation=15, labelsize=9)
+    
+    for bar, val in zip(bars6, trace_vals):
+        ax6.text(bar.get_x() + bar.get_width()/2, bar.get_height() + (max(trace_vals)*0.02), 
+                 f"{val:.1e}", ha='center', va='bottom', fontsize=9)
+    ax6.grid(axis='y', alpha=0.3)
 
     names = [name for name, _ in comps]
     colors = [data["color"] for _, data in comps]

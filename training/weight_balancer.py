@@ -21,48 +21,49 @@ class WeightBalancer:
         self.reset()
 
     def reset(self) -> None:
-        self.w_pde = self.config.w_pde_init
-        self.w_dirichlet = self.config.w_dirichlet_init
-        self.w_neumann = self.config.w_neumann_init
+
+        self.w_pde = 1.0
+        self.w_dirichlet = 1.0 
+        self.w_neumann = 1.0
 
         self._trace_history: Dict[str, list] = {"pde": [], "dir": [], "neu": []}
-        self._smooth_trace: Dict[str, float] = {"pde": 1.0, "dir": 1.0, "neu": 1.0}
+        self._smooth_norm: Dict[str, float] = {"pde": 1.0, "dir": 1.0, "neu": 1.0}
 
-    def update_from_ntk(
+    def update_from_gradients(
                 self,
-                trace_pde: float,
-                trace_dirichlet: float,
-                trace_neumann: float = 0.0,
+                grad_pde_norm: float,
+                grad_dir_norm: float,
+                grad_neu_norm: float = 0.0,
+                bc_penalty: float = 1.0 
             ) -> Tuple[float, float, float]:
 
-        self._trace_history["pde"].append(trace_pde)
-        self._trace_history["dir"].append(trace_dirichlet)
-        self._trace_history["neu"].append(trace_neumann)
+        if not self.config.enabled:
+            self.w_pde = 1.0
+            self.w_dirichlet = bc_penalty
+            self.w_neumann = bc_penalty if grad_neu_norm > 0 or self.w_neumann > 0 else 0.0
+            return self.w_pde, self.w_dirichlet, self.w_neumann
+
+        self._trace_history["pde"].append(grad_pde_norm)
+        self._trace_history["dir"].append(grad_dir_norm)
+        self._trace_history["neu"].append(grad_neu_norm)
 
         alpha = 1 - self.config.momentum
 
-        self._smooth_trace["pde"] = alpha * trace_pde + (1 - alpha) * self._smooth_trace["pde"]
-        self._smooth_trace["dir"] = alpha * trace_dirichlet + (1 - alpha) * self._smooth_trace["dir"]
-        self._smooth_trace["neu"] = alpha * trace_neumann + (1 - alpha) * self._smooth_trace["neu"]
+        self._smooth_norm["pde"] = alpha * grad_pde_norm + (1 - alpha) * self._smooth_norm["pde"]
+        self._smooth_norm["dir"] = alpha * grad_dir_norm + (1 - alpha) * self._smooth_norm["dir"]
+        self._smooth_norm["neu"] = alpha * grad_neu_norm + (1 - alpha) * self._smooth_norm["neu"]
 
         eps = 1e-10
-        inv_sqrt = {
-            "pde": 1.0 / np.sqrt(self._smooth_trace["pde"] + eps),
-            "dir": 1.0 / np.sqrt(self._smooth_trace["dir"] + eps),
-            "neu": 1.0 / np.sqrt(self._smooth_trace["neu"] + eps) if trace_neumann > eps else 0.0,
-        }
 
-        total = inv_sqrt["pde"] + inv_sqrt["dir"] + inv_sqrt["neu"]
-        if total < eps:
-            total = 1.0
+        max_grad = max(self._smooth_norm["pde"], self._smooth_norm["dir"], self._smooth_norm["neu"])
 
-        new_w_pde = np.clip(inv_sqrt["pde"] / total * 3, self.config.min_weight, self.config.max_weight)
-        new_w_dir = np.clip(inv_sqrt["dir"] / total * 3, self.config.min_weight, self.config.max_weight)
-        new_w_neu = np.clip(inv_sqrt["neu"] / total * 3, self.config.min_weight, self.config.max_weight) if trace_neumann > eps else 0.0
+        new_w_pde = max_grad / (self._smooth_norm["pde"] + eps)
+        new_w_dir = max_grad / (self._smooth_norm["dir"] + eps)
+        new_w_neu = max_grad / (self._smooth_norm["neu"] + eps) if grad_neu_norm > eps else 0.0
 
-        self.w_pde = alpha * new_w_pde + (1 - alpha) * self.w_pde
-        self.w_dirichlet = alpha * new_w_dir + (1 - alpha) * self.w_dirichlet
-        self.w_neumann = alpha * new_w_neu + (1 - alpha) * self.w_neumann if trace_neumann > eps else 0.0
+        self.w_pde = np.clip(alpha * new_w_pde + (1 - alpha) * self.w_pde, self.config.min_weight, self.config.max_weight)
+        self.w_dirichlet = np.clip(alpha * new_w_dir + (1 - alpha) * self.w_dirichlet, self.config.min_weight, self.config.max_weight)
+        self.w_neumann = np.clip(alpha * new_w_neu + (1 - alpha) * self.w_neumann, self.config.min_weight, self.config.max_weight)
 
         return self.w_pde, self.w_dirichlet, self.w_neumann
 
@@ -71,16 +72,4 @@ class WeightBalancer:
             "pde": self.w_pde,
             "dirichlet": self.w_dirichlet,
             "neumann": self.w_neumann,
-        }
-
-    def get_diagnostics(self) -> Dict[str, any]:
-        return {
-            "weights": self.get_weights(),
-            "trace_history": {k: v[-10:] if v else [] for k, v in self._trace_history.items()},
-            "smooth_trace": self._smooth_trace,
-            "config": {
-                "enabled": self.config.enabled,
-                "method": self.config.method,
-                "update_every": self.config.update_every,
-            },
         }

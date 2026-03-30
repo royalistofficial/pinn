@@ -116,7 +116,7 @@ class NetworkConfig:
             **kwargs
         )
 
-DEFAULT_CONFIG = NetworkConfig.pi_dbsn()
+DEFAULT_CONFIG = NetworkConfig.mlp()
 
 PRESET_CONFIGS = {
     "mlp": NetworkConfig.mlp(),

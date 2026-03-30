@@ -257,8 +257,6 @@ class Trainer:
             ) -> dict:
         from functionals.operators import laplacian, gradient
 
-        weights = self.weight_balancer.get_weights()
-
         v = self.pinn(xq)
         _, lap_v = laplacian(v, xq)
         residual = -lap_v - f_in
@@ -277,14 +275,33 @@ class Trainer:
             neu_mask = 1.0 - bc_mask
             loss_neu = (diff_N ** 2 * neu_mask).sum() / (neu_mask.sum() + 1e-8)
 
-        if not AUTO_BALANCE_ENABLED:
-            total_loss = loss_pde + BC_PENALTY * (loss_dir + loss_neu)
-        else:
-            total_loss = (
-                weights["pde"] * loss_pde +
-                weights["dirichlet"] * loss_dir +
-                weights["neumann"] * loss_neu
+        if AUTO_BALANCE_ENABLED:
+
+            self.pinn.zero_grad()
+            loss_pde.backward(retain_graph=True)
+            grad_pde_norm = sum(p.grad.norm()**2 for p in self.pinn.parameters() if p.grad is not None).sqrt().item()
+
+            self.pinn.zero_grad()
+            loss_dir.backward(retain_graph=True)
+            grad_dir_norm = sum(p.grad.norm()**2 for p in self.pinn.parameters() if p.grad is not None).sqrt().item()
+
+            grad_neu_norm = 0.0
+            if self.has_neumann:
+                self.pinn.zero_grad()
+                loss_neu.backward(retain_graph=True)
+                grad_neu_norm = sum(p.grad.norm()**2 for p in self.pinn.parameters() if p.grad is not None).sqrt().item()
+
+            w_pde, w_dir, w_neu = self.weight_balancer.update_from_gradients(
+                grad_pde_norm, grad_dir_norm, grad_neu_norm, bc_penalty=BC_PENALTY
             )
+            self.pinn.zero_grad() 
+        else:
+
+            w_pde, w_dir, w_neu = self.weight_balancer.update_from_gradients(
+                0.0, 0.0, 0.0, bc_penalty=BC_PENALTY
+            )
+
+        total_loss = w_pde * loss_pde + w_dir * loss_dir + w_neu * loss_neu
 
         return {
             "total": total_loss,
@@ -314,22 +331,12 @@ class Trainer:
         )
 
         if AUTO_BALANCE_ENABLED:
-            trace_pde = result.metrics_KL["trace"] / max(result.n_interior, 1)
-            trace_dir = 1.0
-            if result.metrics_D is not None:
-                trace_dir = result.metrics_D["trace"] / max(result.n_dirichlet, 1)
-
-            trace_neu = 0.0
-            if self.has_neumann and result.metrics_N is not None:
-                trace_neu = result.metrics_N["trace"] / max(result.n_neumann, 1)
-
-            w_pde, w_dir, w_neu = self.weight_balancer.update_from_ntk(
-                trace_pde, trace_dir, trace_neu
-            )
-
+            weights = self.weight_balancer.get_weights()
             self.logger(
-                f"[Auto-Balance] Weights updated: "
-                f"w_pde={w_pde:.3f}, w_dir={w_dir:.3f}, w_neu={w_neu:.3f}"
+                f"[Weight-Info] Current adaptive weights: "
+                f"w_pde={weights['pde']:.3f}, "
+                f"w_dir={weights['dirichlet']:.3f}, "
+                f"w_neu={weights['neumann']:.3f}"
             )
 
     def _finalize(self) -> None:
