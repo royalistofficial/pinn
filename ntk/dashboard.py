@@ -102,13 +102,13 @@ def plot_ntk_master_dashboard(
 
     ax6 = fig.add_subplot(gs[1, 2])
     trace_vals = [data["metrics"]["trace"] for _, data in comps]
-    
+
     bars6 = ax6.bar(names, trace_vals, color=colors, alpha=0.8)
-    
+
     ax6.set_title("6. След матрицы $\\text{Tr}(K)$", fontweight='bold')
     ax6.set_ylabel("След (Энергия)")
     ax6.tick_params(axis='x', rotation=15, labelsize=9)
-    
+
     for bar, val in zip(bars6, trace_vals):
         ax6.text(bar.get_x() + bar.get_width()/2, bar.get_height() + (max(trace_vals)*0.02), 
                  f"{val:.1e}", ha='center', va='bottom', fontsize=9)

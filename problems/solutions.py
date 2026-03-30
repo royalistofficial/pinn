@@ -77,8 +77,101 @@ class PolynomialSolution(AnalyticalSolution):
     def regularity_order(self) -> float:
         return float('inf')
 
+class HighFreqSineSolution(AnalyticalSolution):
+    def __init__(self, k: float = 5.0):
+        self.k = k
+
+    def eval(self, xy):
+        return (torch.sin(self.k * math.pi * xy[:,0]) * torch.sin(self.k * math.pi * xy[:,1])).unsqueeze(-1)
+
+    def grad(self, xy):
+        sx = torch.sin(self.k * math.pi * xy[:,0])
+        sy = torch.sin(self.k * math.pi * xy[:,1])
+        cx = torch.cos(self.k * math.pi * xy[:,0])
+        cy = torch.cos(self.k * math.pi * xy[:,1])
+        return (self.k * math.pi * cx * sy).unsqueeze(-1), (self.k * math.pi * sx * cy).unsqueeze(-1)
+
+    def rhs(self, xy):
+        return (2 * (self.k * math.pi)**2 * torch.sin(self.k * math.pi * xy[:,0]) * torch.sin(self.k * math.pi * xy[:,1])).unsqueeze(-1)
+
+    @property
+    def regularity_order(self) -> float:
+        return float('inf')
+
+class SteepPeakSolution(AnalyticalSolution):
+    def __init__(self, a: float = 100.0):
+        self.a = a
+
+    def eval(self, xy):
+        r2 = xy[:,0]**2 + xy[:,1]**2
+        return torch.exp(-self.a * r2).unsqueeze(-1)
+
+    def grad(self, xy):
+        r2 = xy[:,0]**2 + xy[:,1]**2
+        u = torch.exp(-self.a * r2)
+        ux = -2 * self.a * xy[:,0] * u
+        uy = -2 * self.a * xy[:,1] * u
+        return ux.unsqueeze(-1), uy.unsqueeze(-1)
+
+    def rhs(self, xy):
+        r2 = xy[:,0]**2 + xy[:,1]**2
+        u = torch.exp(-self.a * r2)
+
+        return (4 * self.a * (1.0 - self.a * r2) * u).unsqueeze(-1)
+
+    @property
+    def regularity_order(self) -> float:
+        return float('inf')
+
+class TanhLayerSolution(AnalyticalSolution):
+    def __init__(self, k: float = 10.0):
+        self.k = k
+
+    def eval(self, xy):
+        return torch.tanh(self.k * (xy[:,0] - xy[:,1])).unsqueeze(-1)
+
+    def grad(self, xy):
+        u = torch.tanh(self.k * (xy[:,0] - xy[:,1]))
+        sech2 = 1.0 - u**2
+        ux = self.k * sech2
+        uy = -self.k * sech2
+        return ux.unsqueeze(-1), uy.unsqueeze(-1)
+
+    def rhs(self, xy):
+        u = torch.tanh(self.k * (xy[:,0] - xy[:,1]))
+
+        return (4 * self.k**2 * u * (1.0 - u**2)).unsqueeze(-1)
+
+    @property
+    def regularity_order(self) -> float:
+        return float('inf')
+
+class LowRegularitySolution(AnalyticalSolution):
+    def eval(self, xy):
+
+        r = torch.sqrt(xy[:,0]**2 + xy[:,1]**2 + 1e-12)
+        return (r**3).unsqueeze(-1)
+
+    def grad(self, xy):
+        r = torch.sqrt(xy[:,0]**2 + xy[:,1]**2 + 1e-12)
+        ux = 3 * xy[:,0] * r
+        uy = 3 * xy[:,1] * r
+        return ux.unsqueeze(-1), uy.unsqueeze(-1)
+
+    def rhs(self, xy):
+        r = torch.sqrt(xy[:,0]**2 + xy[:,1]**2 + 1e-12)
+        return (-9.0 * r).unsqueeze(-1)
+
+    @property
+    def regularity_order(self) -> float:
+        return 2.5
+
 SOLUTIONS = {
     "sine": SineSolution,
     "exponential": ExponentialSolution,
     "polynomial": PolynomialSolution,
+    "high_freq": HighFreqSineSolution,
+    "steep_peak": SteepPeakSolution,
+    "tanh_layer": TanhLayerSolution,
+    "low_reg": LowRegularitySolution,
 }

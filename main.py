@@ -56,7 +56,7 @@ def run(domain_name: str = "square") -> None:
         )
 
         mesh_img = os.path.join(OUTPUT_DIR, f"{domain_name}_mesh.png")
-        plot_mesh(mesh, domain_name, domain.bc_type, mesh_img)
+        plot_mesh(mesh, domain_name, domain.bc_type, mesh_img, quad=quad)
         logger(f"Mesh visualization saved: {mesh_img}")
 
         t_start = time.time()
@@ -80,7 +80,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--domain",
         type=str,
-        default="square",
+        default="square_mixed",
         choices=[
             "square", "square_mixed",
             "circle", "circle_mixed",

@@ -3,6 +3,10 @@ from .solutions import (
     SineSolution,
     ExponentialSolution,
     PolynomialSolution,
+    HighFreqSineSolution,
+    SteepPeakSolution,
+    TanhLayerSolution,
+    LowRegularitySolution,
     SOLUTIONS,
 )
 
@@ -11,5 +15,9 @@ __all__ = [
     "SineSolution",
     "ExponentialSolution",
     "PolynomialSolution",
+    "HighFreqSineSolution",
+    "SteepPeakSolution",
+    "TanhLayerSolution",
+    "LowRegularitySolution",
     "SOLUTIONS",
 ]

@@ -1,7 +1,7 @@
 from __future__ import annotations
 import os
 from dataclasses import dataclass
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Any
 
 import numpy as np
 import torch
@@ -65,6 +65,7 @@ def plot_mesh(
         domain_name: str,
         bc_type_func,
         save_path: str,
+        quad: Any = None,  
     ) -> None:
     pts = mesh["points"]
     tris = mesh["triangles"]
@@ -73,7 +74,8 @@ def plot_mesh(
 
     fig, ax = plt.subplots(figsize=(8, 8))
     tri_obj = mtri.Triangulation(pts[:, 0], pts[:, 1], tris)
-    ax.triplot(tri_obj, linewidth=0.3, color="steelblue")
+
+    ax.triplot(tri_obj, linewidth=0.3, color="steelblue", alpha=0.5)
 
     has_dir = has_neu = False
     for ei, (i0, i1) in enumerate(bs):
@@ -85,15 +87,43 @@ def plot_mesh(
         ax.plot([p0[0], p1[0]], [p0[1], p1[1]], color=color, linewidth=2.0)
 
     ax.set_aspect("equal")
-    ax.set_title(f"Mesh: {domain_name} ({len(tris)} triangles)")
+    title = f"Сетка: {domain_name} ({len(tris)} треугольников)"
 
     from matplotlib.lines import Line2D
-    handles = [Line2D([0], [0], color="steelblue", lw=0.5, label="Interior")]
+    handles = [Line2D([0], [0], color="steelblue", lw=0.5, label="Внутренняя область")]
     if has_dir:
-        handles.append(Line2D([0], [0], color="red", lw=2, label="Dirichlet"))
+        handles.append(Line2D([0], [0], color="red", lw=2, label="Граница Дирихле"))
     if has_neu:
-        handles.append(Line2D([0], [0], color="green", lw=2, label="Neumann"))
-    ax.legend(handles=handles, loc="upper right")
+        handles.append(Line2D([0], [0], color="green", lw=2, label="Граница Неймана"))
+
+    if quad is not None:
+        xy_in = quad.xy_in.detach().cpu().numpy()
+        xy_bd = quad.xy_bd.detach().cpu().numpy()
+        bc_mask = quad.bc_mask.detach().cpu().numpy().flatten()
+
+        mask_dir = bc_mask > 0.5
+        mask_neu = bc_mask <= 0.5
+
+        xy_dir = xy_bd[mask_dir]
+        xy_neu = xy_bd[mask_neu]
+
+        ax.scatter(xy_in[:, 0], xy_in[:, 1], color="darkorange", s=3, zorder=3)
+
+        if len(xy_dir) > 0:
+            ax.scatter(xy_dir[:, 0], xy_dir[:, 1], color="red", s=12, zorder=4, marker="o", edgecolors="black", linewidths=0.3)
+        if len(xy_neu) > 0:
+            ax.scatter(xy_neu[:, 0], xy_neu[:, 1], color="green", s=12, zorder=4, marker="s", edgecolors="black", linewidths=0.3)
+
+        title += f"\nТочки коллокации: {len(xy_in)} (внутр.), {len(xy_bd)} (гран.)"
+        handles.append(Line2D([0], [0], marker='o', color='w', markerfacecolor='darkorange', markersize=5, label=f'Внутр. точки ({len(xy_in)})'))
+
+        if len(xy_dir) > 0:
+            handles.append(Line2D([0], [0], marker='o', color='w', markerfacecolor='red', markeredgecolor='black', markeredgewidth=0.3, markersize=7, label=f'Точки Дирихле ({len(xy_dir)})'))
+        if len(xy_neu) > 0:
+            handles.append(Line2D([0], [0], marker='s', color='w', markerfacecolor='green', markeredgecolor='black', markeredgewidth=0.3, markersize=7, label=f'Точки Неймана ({len(xy_neu)})'))
+
+    ax.set_title(title, fontsize=13, pad=15)
+    ax.legend(handles=handles, loc="upper left", bbox_to_anchor=(1.02, 1), fontsize=10)
 
     os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
     fig.savefig(save_path, dpi=150, bbox_inches="tight")
