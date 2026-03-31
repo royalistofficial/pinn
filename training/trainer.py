@@ -106,9 +106,12 @@ class Trainer:
             f"Training PINN | Phase 1: Adam ({ADAM_EPOCHS} ep) | Phase 2: L-BFGS ({LBFGS_EPOCHS} ep)"
         )
 
+        alpha = 0.9  
+
         ep = 0
         ep_adam = None
-        best_loss = float("inf")
+        best_ema = float("inf")
+        ema_loss = None
         patience_counter = 0
         loss_info = None  
         bd_iter = iter(self.data.boundary_iter())
@@ -128,14 +131,21 @@ class Trainer:
                 loss_info = self._train_epoch_adam(bd_iter)
                 avg_loss = loss_info["loss"]
 
+                if ema_loss is None:
+                    ema_loss = avg_loss
+                else:
+                    ema_loss = alpha * ema_loss + (1 - alpha) * avg_loss
+
                 if ep == 1 or ep % 1 == 0:
-                    self.callback.on_epoch_end(ep, lr=self.lr, **loss_info)
+                    self.callback.on_epoch_end(
+                        ep, lr=self.lr, ema_loss=ema_loss, **loss_info
+                    )
 
                 if ep % 100 == 0:
                     self.callback.plot_fields(ep)
 
-                if avg_loss < best_loss:
-                    best_loss = avg_loss
+                if ema_loss < best_ema:
+                    best_ema = ema_loss
                     patience_counter = 0
                 else:
                     patience_counter += 1
@@ -146,7 +156,7 @@ class Trainer:
                 if patience_counter >= patience:
                     self.logger(
                         f"[Early Stopping] Adam остановлен на эпохе {ep} "
-                        f"(нет улучшений {patience} эпох)."
+                        f"(EMA без улучшений {patience} эпох)."
                     )
                     break
 
@@ -157,7 +167,7 @@ class Trainer:
             patience_counter = 0
 
             if ADAM_EPOCHS > 0 and loss_info is not None:
-                self.callback.on_epoch_end(ep, lr=self.lr, **loss_info)
+                self.callback.on_epoch_end(ep, lr=self.lr, ema_loss=ema_loss, **loss_info)
                 self.callback.plot_fields(ep)
                 self._run_ntk_analysis(ep)
 
@@ -166,14 +176,21 @@ class Trainer:
                 loss_info = self._train_epoch_lbfgs(bd_iter)
                 avg_loss = loss_info["loss"]
 
+                if ema_loss is None:
+                    ema_loss = avg_loss
+                else:
+                    ema_loss = alpha * ema_loss + (1 - alpha) * avg_loss
+
                 if ep % 1 == 0:
-                    self.callback.on_epoch_end(ep, lr=self.lr, **loss_info)
+                    self.callback.on_epoch_end(
+                        ep, lr=self.lr, ema_loss=ema_loss, **loss_info
+                    )
 
                 if ep % 100 == 0:
                     self.callback.plot_fields(ep)
 
-                if avg_loss < best_loss:
-                    best_loss = avg_loss
+                if ema_loss < best_ema:
+                    best_ema = ema_loss
                     patience_counter = 0
                 else:
                     patience_counter += 1
@@ -184,16 +201,17 @@ class Trainer:
                 if patience_counter >= patience:
                     self.logger(
                         f"[Early Stopping] L-BFGS остановлен на эпохе {ep} "
-                        f"(нет улучшений {patience} эпох)."
+                        f"(EMA без улучшений {patience} эпох)."
                     )
                     break
 
         if loss_info is not None:
-            self.callback.on_epoch_end(ep, lr=self.lr, **loss_info)
+            self.callback.on_epoch_end(ep, lr=self.lr, ema_loss=ema_loss, **loss_info)
             self.callback.plot_fields(ep)
             self._run_ntk_analysis(ep)
         else:
             self.logger("[Warning] Обучение не выполнялось (0 эпох).")
+
         self.callback.plot_metrics(ep_adam)
         self._save_model()
         self.callback.on_training_end()
