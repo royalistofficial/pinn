@@ -7,7 +7,7 @@ import numpy as np
 class WeightConfig:
     enabled: bool = False
     update_every: int = 100
-    momentum: float = 0.9
+    momentum: float = 0.95
     min_weight = 1e-2
     max_weight = 1e+2
 
