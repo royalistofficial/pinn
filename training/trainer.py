@@ -16,7 +16,7 @@ from networks.configs import NetworkConfig
 from networks.pinn import PINN
 
 from training.data_module import DataModule, prepare_sample
-from training.ntk_analyzer import NTKAnalyzer
+from ntk.ntk_analyzer import NTKAnalyzer
 from training.weight_balancer import WeightBalancer, WeightConfig
 
 from evaluation.metrics import MetricsCalculator
@@ -260,7 +260,7 @@ class Trainer:
             "dir_loss": loss_dict_tracker.get("dirichlet", 0.0),
             "neu_loss": loss_dict_tracker.get("neumann", 0.0),
         }
-    
+
     def grad_norm(self, loss: torch.Tensor) -> float:
         self.pinn.zero_grad()
         loss.backward(retain_graph=True)

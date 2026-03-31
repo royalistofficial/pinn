@@ -7,6 +7,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from config import NTK_SHOW_BOUNDARY_PAIRS
 from ntk import (
     compute_jacobian, 
     compute_pde_jacobian, 
@@ -51,6 +52,45 @@ class NTKAnalyzer:
         self.history: List[NTKResult] = []
         os.makedirs(output_dir, exist_ok=True)
 
+    def _build_dashboard_components(self, J_in, J_D, J_N) -> dict:
+        components = {}
+
+        def is_valid(J):
+            return J is not None and J.shape[0] > 0
+
+        def add_comp(name: str, J: Optional[torch.Tensor], color: str, marker: str):
+            if not is_valid(J): 
+                return
+            K = compute_ntk_from_jacobian(J).cpu().numpy()
+            eig = compute_spectrum(K)
+            if len(eig) > 0:
+                metrics = get_all_metrics(K, eig)
+                components[name] = {
+                    "eigenvalues": eig, 
+                    "metrics": metrics, 
+                    "color": color, 
+                    "marker": marker
+                }
+
+        add_comp("Внутренние", J_in, "#2563EB", "o")
+        add_comp("Дирихле", J_D, "#059669", "^")
+        add_comp("Нейман", J_N, "#D97706", "v")
+
+        valid_comps = [j for j in [J_in, J_D, J_N] if is_valid(j)]
+
+        if len(valid_comps) == 3:
+
+            if NTK_SHOW_BOUNDARY_PAIRS:
+                add_comp("Внутр + Дир", torch.cat([J_in, J_D], dim=0), "#0891B2", "s")
+                add_comp("Внутр + Нейм", torch.cat([J_in, J_N], dim=0), "#7C3AED", "D")
+
+            add_comp("Дир + Нейм", torch.cat([J_D, J_N], dim=0), "#BE123C", "X")
+
+        if len(valid_comps) > 1:
+            add_comp("Полная", torch.cat(valid_comps, dim=0), "#E11D48", "P")
+
+        return components
+
     def analyze(
         self,
         epoch: int,
@@ -65,26 +105,12 @@ class NTKAnalyzer:
         X_in = self._subsample(X_interior.to(device), self.n_interior)
         n_in = len(X_in)
 
-        J_in = compute_jacobian(self.model, X_in)
-        J_L_in = compute_pde_jacobian(self.model, X_in)
+        J_u_in = compute_jacobian(self.model, X_in)
 
-        K_in = compute_ntk_from_jacobian(J_in).cpu().numpy()
-        K_L_in = compute_ntk_from_jacobian(J_L_in).cpu().numpy()
+        J_pde_in = compute_pde_jacobian(self.model, X_in)
 
-        eig_K = compute_spectrum(K_in)
-        eig_KL = compute_spectrum(K_L_in)
-
-        metrics_K = get_all_metrics(K_in, eig_K)
-        metrics_KL = get_all_metrics(K_L_in, eig_KL)
-
-        J_total_list = [J_L_in]
-
-        components = {
-            "Внутренние (K)": {"eigenvalues": eig_K, "metrics": metrics_K, "color": "#2563EB", "marker": "o"},
-            "PDE (K_L)": {"eigenvalues": eig_KL, "metrics": metrics_KL, "color": "#DC2626", "marker": "s"}
-        }
-
-        metrics_D, metrics_N = None, None
+        J_u_D, J_u_N = None, None
+        J_pde_D, J_pde_N = None, None
         n_D, n_N = 0, 0
 
         if X_boundary is not None and len(X_boundary) > 0 and bc_mask is not None:
@@ -102,59 +128,55 @@ class NTKAnalyzer:
 
             if n_D > 0:
                 normals_D = normals_sub[idx_D] if normals_sub is not None else None
-                J_D = compute_bc_jacobian(self.model, xy_D, normals_D, "dirichlet")
-                J_total_list.append(J_D)
 
-                K_D = compute_ntk_from_jacobian(J_D).cpu().numpy()
-                eig_D = compute_spectrum(K_D)
-                metrics_D = get_all_metrics(K_D, eig_D)
-                components["Дирихле (K_D)"] = {"eigenvalues": eig_D, "metrics": metrics_D, "color": "#059669", "marker": "^"}
+                J_u_D = compute_jacobian(self.model, xy_D)
+
+                J_pde_D = compute_bc_jacobian(self.model, xy_D, normals_D, "dirichlet")
 
             if n_N > 0:
                 normals_N = normals_sub[idx_N] if normals_sub is not None else None
-                J_N = compute_bc_jacobian(self.model, xy_N, normals_N, "neumann")
-                J_total_list.append(J_N)
 
-                K_N = compute_ntk_from_jacobian(J_N).cpu().numpy()
-                eig_N = compute_spectrum(K_N)
-                metrics_N = get_all_metrics(K_N, eig_N)
-                components["Нейман (K_N)"] = {"eigenvalues": eig_N, "metrics": metrics_N, "color": "#D97706", "marker": "v"}
+                J_u_N = compute_jacobian(self.model, xy_N)
 
-        J_total = torch.cat(J_total_list, dim=0)
-        K_total = compute_ntk_from_jacobian(J_total).cpu().numpy()
-        eig_tot = compute_spectrum(K_total)
-        metrics_tot = get_all_metrics(K_total, eig_tot)
-        components["Полная (K_tot)"] = {"eigenvalues": eig_tot, "metrics": metrics_tot, "color": "#8B5CF6", "marker": "D"}
+                J_pde_N = compute_bc_jacobian(self.model, xy_N, normals_N, "neumann")
+
+        comps_u = self._build_dashboard_components(J_u_in, J_u_D, J_u_N)
+        comps_pde = self._build_dashboard_components(J_pde_in, J_pde_D, J_pde_N)
+
+        dash_path_u = plot_ntk_master_dashboard(
+            epoch=epoch,
+            components=comps_u,
+            output_dir=self.output_dir,
+            prefix="ntk_standard",
+            title_prefix="Стандартный NTK (Выход сети)"
+        )
+
+        dash_path_pde = plot_ntk_master_dashboard(
+            epoch=epoch,
+            components=comps_pde,
+            output_dir=self.output_dir,
+            prefix="ntk_pde",
+            title_prefix="PDE NTK (Функция потерь)"
+        )
+
+        self.logger(f"[NTK] Дашборд Стандартного NTK сохранен: {dash_path_u}")
+        self.logger(f"[NTK] Дашборд PDE NTK сохранен: {dash_path_pde}")
 
         result = NTKResult(
             epoch=epoch,
-            eigenvalues_KL=eig_KL,
-            metrics_KL=metrics_KL,
-            eigenvalues_K=eig_K,
-            metrics_K=metrics_K,
-            metrics_D=metrics_D,
-            metrics_N=metrics_N,
-            metrics_tot=metrics_tot,
+            eigenvalues_KL=comps_pde.get("Внутренние", {}).get("eigenvalues", np.array([])),
+            metrics_KL=comps_pde.get("Внутренние", {}).get("metrics", {}),
+            eigenvalues_K=comps_u.get("Внутренние", {}).get("eigenvalues", np.array([])),
+            metrics_K=comps_u.get("Внутренние", {}).get("metrics", {}),
+            metrics_D=comps_pde.get("Дирихле", {}).get("metrics"),
+            metrics_N=comps_pde.get("Нейман", {}).get("metrics"),
+            metrics_tot=comps_pde.get("Полная", {}).get("metrics"),
             n_interior=n_in,
             n_dirichlet=n_D,
             n_neumann=n_N
         )
 
         self.history.append(result)
-
-        self.logger(
-            f"[NTK] Epoch {epoch} Спектральная сводка:\n"
-            f"       K_L (PDE): κ={metrics_KL['condition_number']:.2e}, rank={metrics_KL['effective_rank']:.1f}\n"
-            f"       K_tot (Все): κ={metrics_tot['condition_number']:.2e}, rank={metrics_tot['effective_rank']:.1f}"
-        )
-
-        dash_path = plot_ntk_master_dashboard(
-            epoch=epoch,
-            components=components,
-            output_dir=self.output_dir
-        )
-        self.logger(f"[NTK] Спектральный Дашборд сохранен: {dash_path}")
-
         return result
 
     @staticmethod

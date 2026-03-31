@@ -152,7 +152,7 @@ def plot_training_metrics(history: Dict, domain: str, path: str, ep_adam: None |
                     color="black",
                     label="Adam → L-BFGS"
                 )
-                
+
     _save_fig(fig, path)
 
 def plot_solution_fields(

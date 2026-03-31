@@ -59,11 +59,15 @@ class WeightBalancer:
 
         new_w_pde = max_grad / (self._smooth_norm["pde"] + eps)
         new_w_dir = max_grad / (self._smooth_norm["dir"] + eps)
-        new_w_neu = max_grad / (self._smooth_norm["neu"] + eps) if grad_neu_norm > eps else 0.0
 
         self.w_pde = np.clip(alpha * new_w_pde + (1 - alpha) * self.w_pde, self.config.min_weight, self.config.max_weight)
         self.w_dirichlet = np.clip(alpha * new_w_dir + (1 - alpha) * self.w_dirichlet, self.config.min_weight, self.config.max_weight)
-        self.w_neumann = np.clip(alpha * new_w_neu + (1 - alpha) * self.w_neumann, self.config.min_weight, self.config.max_weight)
+
+        if grad_neu_norm > eps:
+            new_w_neu = max_grad / (self._smooth_norm["neu"] + eps)
+            self.w_neumann = np.clip(alpha * new_w_neu + (1 - alpha) * self.w_neumann, self.config.min_weight, self.config.max_weight)
+        else:
+            self.w_neumann = 0.0
 
         return self.w_pde, self.w_dirichlet, self.w_neumann
 

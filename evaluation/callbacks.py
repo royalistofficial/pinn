@@ -17,7 +17,7 @@ from visualization.mesh_plots import refine_mesh, evaluate_fields
 
 if TYPE_CHECKING:
     from training.weight_balancer import WeightBalancer
-    from training.ntk_analyzer import NTKAnalyzer
+    from ntk.ntk_analyzer import NTKAnalyzer
 
 class TrainingCallback:
     def __init__(
@@ -129,7 +129,7 @@ class TrainingCallback:
             self.logger(log_msg)
 
         return ee
-    
+
     def plot_metrics(self, ep_adam: int) -> None:
         plot_training_metrics(
             self.history.pretrain.as_dict(),
