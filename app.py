@@ -97,7 +97,7 @@ class PINNApp(ctk.CTk):
         self.dynamic_net_vars = {}
 
         # --- ЛЕВАЯ ПАНЕЛЬ ---
-        self.left_panel = ctk.CTkFrame(self, width=320, corner_radius=0)
+        self.left_panel = ctk.CTkFrame(self, width=640, corner_radius=5)
         self.left_panel.pack(side="left", fill="y")
         self.left_panel.pack_propagate(False)
 
@@ -160,7 +160,7 @@ class PINNApp(ctk.CTk):
         self.run_btn.pack(fill="x", padx=20, pady=(0, 10))
 
         # --- ПРАВАЯ ПАНЕЛЬ (ВКЛАДКИ ДЛЯ КАРТИНОК) ---
-        self.main_frame = ctk.CTkFrame(self, corner_radius=0, fg_color="transparent")
+        self.main_frame = ctk.CTkFrame(self, corner_radius=5, fg_color="transparent")
         self.main_frame.pack(side="right", fill="both", expand=True, padx=10, pady=10)
         self.tabview = ctk.CTkTabview(self.main_frame)
         self.tabview.pack(fill="both", expand=True)
