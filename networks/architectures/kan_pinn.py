@@ -3,7 +3,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
 class BSplineKANLayer(nn.Module):
     def __init__(self, in_dim: int, out_dim: int, grid_size: int = 5, spline_order: int = 3, residual: bool = True):
         super().__init__()
@@ -66,7 +65,7 @@ class BSplineKANLayer(nn.Module):
         spline_basis = self.b_spline(x, grid)
 
         B = spline_basis.shape[0]
-        
+
         spline_flat = spline_basis.view(B, -1)
         spline_out = F.linear(spline_flat, self.coeffs)
 
@@ -78,7 +77,6 @@ class BSplineKANLayer(nn.Module):
             y = y + self.res_scale * x
 
         return torch.tanh(y)
-
 
 class BSplineKAN(nn.Module):
     def __init__(self, config):

@@ -3,7 +3,6 @@ import torch.nn as nn
 import math
 import torch.nn.functional as F
 
-
 class BSplineLayer(nn.Module):
     def __init__(self, in_dim: int, out_dim: int, grid_size: int = 5, spline_order: int = 3, residual: bool = True):
         super().__init__()
@@ -14,7 +13,7 @@ class BSplineLayer(nn.Module):
         self.residual = residual and (in_dim == out_dim)
 
         self.n_coeffs = grid_size + spline_order
-        
+
         self.coeffs = nn.Parameter(torch.empty(out_dim, in_dim * self.n_coeffs))
         nn.init.kaiming_uniform_(self.coeffs, a=math.sqrt(5))
 
@@ -66,7 +65,7 @@ class BSplineLayer(nn.Module):
         spline_basis = self.b_spline(x, grid)
 
         B = spline_basis.shape[0]
-        
+
         spline_flat = spline_basis.view(B, -1) 
         spline_out = F.linear(spline_flat, self.coeffs)
 
@@ -78,7 +77,6 @@ class BSplineLayer(nn.Module):
             y = y + self.res_scale * x
 
         return torch.tanh(y)
-
 
 class PIDBSN(nn.Module):
     def __init__(self, config):

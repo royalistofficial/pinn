@@ -45,17 +45,44 @@ def plot_ntk_master_dashboard(
     ax2.grid(True, alpha=0.3)
 
     ax3 = fig.add_subplot(gs[0, 2])
+
+    ax3.axhspan(0.9, 1.05, color='gray', alpha=0.1, lw=0)
+    ax3.axhline(0.9, color='k', linestyle='--', linewidth=1.5, alpha=0.7, label='90% Энергии')
+
     for name, data in comps:
         eig = data["eigenvalues"]
         k_idx = np.arange(1, len(eig) + 1)
         cum = np.cumsum(eig) / np.sum(eig)
-        ax3.plot(k_idx, cum, color=data["color"], linewidth=2, label=name)
-    ax3.axhline(0.9, color='k', linestyle='--', alpha=0.5, label='90% Энергии')
+
+        ax3.plot(k_idx, cum, color=data["color"], linewidth=2.5, alpha=0.85, label=name)
+
+        idx_90 = np.argmax(cum >= 0.9)
+
+        if cum[idx_90] >= 0.9:
+            k_90 = k_idx[idx_90]
+            val_90 = cum[idx_90]
+
+            ax3.scatter(k_90, val_90, color=data["color"], s=50, zorder=5, 
+                        edgecolors='white', linewidths=1.5)
+
+            ax3.vlines(x=k_90, ymin=0, ymax=val_90, color=data["color"], 
+                       linestyle=':', alpha=0.6, linewidth=1.5)
+
+            ax3.text(k_90 * 1.15, val_90 - 0.05, f"k={k_90}", color=data["color"], 
+                     fontsize=9, fontweight='bold', va='top', ha='left',
+                     bbox=dict(facecolor='white', alpha=0.6, edgecolor='none', pad=1))
+
+    ax3.set_xscale('log')
+    ax3.set_ylim(0, 1.05) 
+
     ax3.set_title("3. Кумулятивная доля энергии", fontweight='bold')
-    ax3.set_xlabel("Индекс $k$")
+    ax3.set_xlabel("Индекс $k$ (log-scale)")
     ax3.set_ylabel("Доля от общего следа")
-    ax3.legend(fontsize=8)
-    ax3.grid(True, alpha=0.3)
+
+    ax3.grid(True, which="major", alpha=0.4, linewidth=1)
+    ax3.grid(True, which="minor", alpha=0.15, linestyle='--')
+
+    ax3.legend(fontsize=8, loc='lower right', framealpha=0.9)
 
     ax4 = fig.add_subplot(gs[1, 0])
     ax5 = fig.add_subplot(gs[1, 1])

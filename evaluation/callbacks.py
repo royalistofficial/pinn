@@ -18,6 +18,7 @@ from visualization.mesh_plots import refine_mesh, evaluate_fields
 if TYPE_CHECKING:
     from training.weight_balancer import WeightBalancer
     from ntk.ntk_analyzer import NTKAnalyzer
+    from geometry.quadrature import QuadratureData
 
 class TrainingCallback:
     def __init__(
@@ -30,6 +31,7 @@ class TrainingCallback:
                 metrics_calculator: Optional[MetricsCalculator] = None,
                 weight_balancer: Optional["WeightBalancer"] = None,
                 ntk_analyzer: Optional["NTKAnalyzer"] = None,
+                eval_quad: Optional["QuadratureData"] = None, 
             ):
         self.pinn = pinn
         self.data = data
@@ -38,6 +40,7 @@ class TrainingCallback:
         self.domain_name = domain_name
         self.weight_balancer = weight_balancer
         self.ntk_analyzer = ntk_analyzer
+        self.eval_quad = eval_quad 
 
         self.metrics_calculator = metrics_calculator or MetricsCalculator(solution)
         self.history = MetricsHistory()
@@ -48,15 +51,19 @@ class TrainingCallback:
         self.stability_constant = None
 
     def on_epoch_end(self, epoch: int, lr: float, **loss_info) -> float:
-        s = self.data.sample
-        xq = s.quad.xy_in.clone().requires_grad_(True)
+
+        quad_to_use = self.eval_quad if self.eval_quad is not None else self.data.sample.quad
+
+        xq = quad_to_use.xy_in.clone().requires_grad_(True)
+        vol_w = quad_to_use.vol_w
 
         with torch.enable_grad():
             v = self.pinn(xq)
             gv = gradient(v, xq, create_graph=False)
 
         with torch.no_grad():
-            metrics = self.metrics_calculator.compute_all(v, gv, xq, s.quad.vol_w)
+
+            metrics = self.metrics_calculator.compute_all(v, gv, xq, vol_w)
             ee = metrics["energy"]
             rel = metrics["rel_l2"]
             rel_en = metrics["rel_energy"]
@@ -143,12 +150,13 @@ class TrainingCallback:
         self.logger(f"Training completed. Best energy error: E={best:.4e}")
 
     def plot_fields(self, epoch: int) -> None:
-        mesh = self.data.sample.quad.mesh
+        quad_to_use = self.eval_quad if self.eval_quad is not None else self.data.sample.quad
+        mesh = quad_to_use.mesh
         tri_refi, pts_refi = refine_mesh(mesh)
 
         xy_t = torch.tensor(
             pts_refi, dtype=torch.float32,
-            device=self.data.sample.quad.xy_in.device
+            device=quad_to_use.xy_in.device
         )
 
         self.pinn.eval()

@@ -36,7 +36,7 @@ class WavKANLayer(nn.Module):
 
         wav_flat = wav.view(B, -1)
         y_wav = F.linear(wav_flat, self.weights)
-        
+
         y_base = F.linear(self.base_activation(x), self.base_weight)
 
         y = y_wav + y_base
@@ -45,7 +45,6 @@ class WavKANLayer(nn.Module):
             y = y + x
 
         return y
-
 
 class WavKAN(nn.Module):
     def __init__(self, config):

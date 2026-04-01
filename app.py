@@ -112,13 +112,13 @@ class PINNApp(ctk.CTk):
         self.solution_var = ctk.StringVar(value="steep_peak")
         ctk.CTkOptionMenu(self.scroll_settings, values=list(SOLUTIONS.keys()), variable=self.solution_var).pack(fill="x", padx=10, pady=5)
 
-        # --- 2. ГЕНЕРАЦИЯ СЕТКИ И КВАДРАТУР ---
-        ctk.CTkLabel(self.scroll_settings, text="2. Сетка и Интегрирование", font=ctk.CTkFont(weight="bold", size=14), text_color="#3B82F6").pack(anchor="w", padx=10, pady=(15, 5))
-        self.mesh_area = self.add_entry(self.scroll_settings, "Макс. площадь (max_area)", config.DEFAULT_TRI_AREA)
-        self.mesh_density = self.add_entry(self.scroll_settings, "Плотность граничных точек", config.BOUNDARY_DENSITY_PTS)
+        # --- 2. ГЕНЕРАЦИЯ СЕТКИ И КВАДРАТУР (Для Обучения) ---
+        ctk.CTkLabel(self.scroll_settings, text="2. Обучающая сетка", font=ctk.CTkFont(weight="bold", size=14), text_color="#3B82F6").pack(anchor="w", padx=10, pady=(15, 5))
+        self.mesh_area = self.add_entry(self.scroll_settings, "Макс. площадь (max_area)", config.TRAIN_TRI_AREA)
+        self.mesh_density = self.add_entry(self.scroll_settings, "Плотность граничных точек", config.TRAIN_BOUNDARY_DENSITY)
         self.mesh_lloyd = self.add_entry(self.scroll_settings, "Итерации сглаживания Ллойда", 3)
-        self.quad_tri = self.add_entry(self.scroll_settings, "Порядок Гаусса (внутри, 1-6)", config.GAUSS_TRI_ORDER)
-        self.quad_line = self.add_entry(self.scroll_settings, "Порядок Гаусса (граница)", config.GAUSS_LINE_ORDER)
+        self.quad_tri = self.add_entry(self.scroll_settings, "Порядок Гаусса (внутри, 1-6)", config.TRAIN_GAUSS_TRI_ORDER)
+        self.quad_line = self.add_entry(self.scroll_settings, "Порядок Гаусса (граница)", config.TRAIN_GAUSS_LINE_ORDER)
 
         # --- 3. АРХИТЕКТУРА СЕТИ (ДИНАМИЧЕСКАЯ) ---
         ctk.CTkLabel(self.scroll_settings, text="3. Нейросеть", font=ctk.CTkFont(weight="bold", size=14), text_color="#3B82F6").pack(anchor="w", padx=10, pady=(15, 5))
@@ -188,21 +188,17 @@ class PINNApp(ctk.CTk):
         """Полностью очищает папку с результатами (data) при запуске приложения."""
         out_dir = config.OUTPUT_DIR
         if os.path.exists(out_dir):
-            # Ищем все файлы внутри папки (графики, логи и т.д.)
             files = glob.glob(os.path.join(out_dir, "*"))
             for file_path in files:
                 try:
-                    # Удаляем только файлы (не трогаем вложенные папки, если они вдруг там есть)
                     if os.path.isfile(file_path):
                         os.remove(file_path)
                 except Exception as e:
                     print(f"Не удалось удалить файл {file_path}: {e}")
         else:
-            # Если папки еще нет, создаем её
             os.makedirs(out_dir, exist_ok=True)
 
     def add_entry(self, parent, label, default_val):
-        """Вспомогательная функция для добавления полей ввода"""
         lbl = ctk.CTkLabel(parent, text=label, font=ctk.CTkFont(size=12))
         lbl.pack(anchor="w", padx=10, pady=(5, 0))
         entry = ctk.CTkEntry(parent, height=28)
@@ -211,21 +207,16 @@ class PINNApp(ctk.CTk):
         return entry
 
     def on_arch_change(self, arch_name):
-        """Динамически перестраивает поля под конкретную архитектуру сети"""
-        # Удаляем все старые виджеты из фрейма параметров
         for widget in self.net_params_frame.winfo_children():
             widget.destroy()
             
         self.dynamic_net_vars.clear()
         
-        # Получаем базовый конфиг из PRESET_CONFIGS
         preset = PRESET_CONFIGS[arch_name]
         
-        # Базовые параметры (есть у всех)
         self.dynamic_net_vars["hidden_dim"] = self.add_entry(self.net_params_frame, "Скрытых нейронов (hidden_dim)", preset.hidden_dim)
         self.dynamic_net_vars["n_layers"] = self.add_entry(self.net_params_frame, "Количество слоев (n_layers)", preset.n_layers)
 
-        # Специфичные параметры в зависимости от архитектуры
         if arch_name == "mlp":
             lbl = ctk.CTkLabel(self.net_params_frame, text="Функция активации", font=ctk.CTkFont(size=12))
             lbl.pack(anchor="w", padx=10, pady=(5, 0))
@@ -295,15 +286,13 @@ class PINNApp(ctk.CTk):
             for key, widget in self.dynamic_net_vars.items():
                 if isinstance(widget, ctk.CTkEntry):
                     val_str = widget.get()
-                    # Умное определение типа: если есть точка или "e", то float, иначе int
                     if '.' in val_str or 'e' in val_str.lower():
                         net_kwargs[key] = float(val_str)
                     else:
                         net_kwargs[key] = int(val_str)
-                else: # CTkOptionMenu или CTkCheckBox
+                else:
                     net_kwargs[key] = widget.get()
 
-            # Создаем конфиг из собранных динамических полей
             net_config = NetworkConfig(**net_kwargs)
 
             # --- ГЛОБАЛЬНЫЕ НАСТРОЙКИ ---
@@ -318,18 +307,54 @@ class PINNApp(ctk.CTk):
             patience_val = int(self.early_stopping.get())
             out_dir = config.OUTPUT_DIR
 
-            self.status_label.configure(text="Статус: Генерация сетки...")
+            self.status_label.configure(text="Статус: Генерация сеток (Обучение + Валидация)...")
             domain = make_domain(domain_name)
             solution = SOLUTIONS[solution_name]()
             
-            mesher = Mesher(max_area=float(self.mesh_area.get()), lloyd_iters=int(self.mesh_lloyd.get()), boundary_density=int(self.mesh_density.get()))
-            mesh = mesher.build(domain)
-            quad_builder = QuadratureBuilder(tri_order=int(self.quad_tri.get()), line_order=int(self.quad_line.get()), device=config.DEVICE)
-            quad = quad_builder.build(mesh, domain)
+            # ==========================================================
+            # 1. ГЕНЕРАЦИЯ ОБУЧАЮЩЕЙ СЕТКИ (TRAIN)
+            # ==========================================================
+            mesher_train = Mesher(
+                max_area=float(self.mesh_area.get()), 
+                lloyd_iters=int(self.mesh_lloyd.get()), 
+                boundary_density=int(self.mesh_density.get())
+            )
+            mesh_train = mesher_train.build(domain)
+            
+            quad_builder_train = QuadratureBuilder(
+                tri_order=int(self.quad_tri.get()), 
+                line_order=int(self.quad_line.get()), 
+                device=config.DEVICE
+            )
+            quad_train = quad_builder_train.build(mesh_train, domain)
 
-            mesh_img_path = os.path.join(out_dir, f"{domain_name}_mesh.png")
-            plot_mesh(mesh, domain_name, domain.bc_type, mesh_img_path, quad=quad)
-            self.after(0, self.update_image, "Сетка", mesh_img_path)
+            # ==========================================================
+            # 2. ГЕНЕРАЦИЯ ВАЛИДАЦИОННОЙ СЕТКИ (EVAL)
+            # ==========================================================
+            mesher_eval = Mesher(
+                max_area=config.EVAL_TRI_AREA, 
+                lloyd_iters=int(self.mesh_lloyd.get()), 
+                boundary_density=config.EVAL_BOUNDARY_DENSITY
+            )
+            mesh_eval = mesher_eval.build(domain)
+            
+            quad_builder_eval = QuadratureBuilder(
+                tri_order=config.EVAL_GAUSS_TRI_ORDER, 
+                line_order=config.EVAL_GAUSS_LINE_ORDER, 
+                device=config.DEVICE
+            )
+            quad_eval = quad_builder_eval.build(mesh_eval, domain)
+
+            # --- Отрисовка обучающей сетки ---
+            mesh_train_path = os.path.join(out_dir, f"{domain_name}_mesh_train.png")
+            plot_mesh(mesh_train, f"{domain_name} (Train)", domain.bc_type, mesh_train_path, quad=quad_train)
+            
+            # --- Отрисовка валидационной сетки ---
+            mesh_eval_path = os.path.join(out_dir, f"{domain_name}_mesh_eval.png")
+            plot_mesh(mesh_eval, f"{domain_name} (Eval)", domain.bc_type, mesh_eval_path, quad=quad_eval)
+
+            # Выводим на экран обучающую по умолчанию
+            self.after(0, self.update_image, "Сетка", mesh_train_path)
 
             self.status_label.configure(text="Статус: Оптимизация сети...")
             log_path = os.path.join(out_dir, f"gui_log_{domain_name}.txt")
@@ -337,7 +362,14 @@ class PINNApp(ctk.CTk):
                 os.remove(f)
 
             with FileLogger(log_path, also_print=True) as logger:
-                trainer = Trainer(domain=domain, quad=quad, solution=solution, logger=logger, config=net_config)
+                trainer = Trainer(
+                    domain=domain, 
+                    quad=quad_train, 
+                    eval_quad=quad_eval,
+                    solution=solution, 
+                    logger=logger, 
+                    config=net_config
+                )
                 trainer.train(patience=patience_val)
 
             self.after(0, self.update_image, "Метрики", os.path.join(out_dir, f"{domain_name}_metrics.png"))

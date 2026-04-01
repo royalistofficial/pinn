@@ -1,7 +1,7 @@
 import math
 import torch
 import torch.nn as nn
-import torch.nn.functional as F  # Импортируем F для использования F.linear
+import torch.nn.functional as F  
 
 class ChebyKANLayer(nn.Module):
     def __init__(self, in_dim: int, out_dim: int, degree: int = 5, residual: bool = True):
@@ -13,7 +13,7 @@ class ChebyKANLayer(nn.Module):
         self.residual = residual and (in_dim == out_dim)
 
         std = 1.0 / math.sqrt(in_dim * (degree + 1))
-        
+
         self.coeffs = nn.Parameter(torch.empty(out_dim, in_dim * (degree + 1)))
         nn.init.normal_(self.coeffs, mean=0.0, std=std)
 
@@ -33,7 +33,7 @@ class ChebyKANLayer(nn.Module):
 
         T_stack = torch.stack(T, dim=-1).view(batch, -1)   
         y = F.linear(T_stack, self.coeffs)
-        
+
         y = y * self._scale
 
         if self.residual:

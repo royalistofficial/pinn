@@ -31,6 +31,7 @@ class Trainer:
                 logger,
                 batch_size: int = 4096,
                 config: NetworkConfig | dict | None = None,
+                eval_quad = None, 
             ):
         self.has_neumann = domain.has_neumann
         self.logger = logger
@@ -83,6 +84,7 @@ class Trainer:
             metrics_calculator=self.metrics_calculator,
             weight_balancer=self.weight_balancer,
             ntk_analyzer=self.ntk_analyzer,
+            eval_quad=eval_quad,
         )
 
     def _compute_domain_diameter(self, domain) -> float:
