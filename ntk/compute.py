@@ -76,7 +76,8 @@ def compute_bc_jacobian(
         return torch.zeros(0, P, device=xy_boundary.device)
 
     def fmodel(p, b, x):
-        return functional_call(model, (p, b), (x.unsqueeze(0),)).squeeze(-1)
+
+        return functional_call(model, (p, b), (x.unsqueeze(0),)).squeeze()
 
     def compute_single_dirichlet(p, b, x):
         def f(weights):
@@ -88,7 +89,8 @@ def compute_bc_jacobian(
             def u_fn(x_in):
                 return fmodel(weights, b, x_in)
             grad_x = jacrev(u_fn)(x)
-            return torch.dot(grad_x, n) 
+
+            return torch.dot(grad_x.flatten(), n.flatten()) 
         return jacrev(neu_res)(p)
 
     if bc_type.lower() == "dirichlet":
@@ -106,3 +108,6 @@ def compute_ntk_from_jacobian(J: torch.Tensor) -> torch.Tensor:
     K = J @ J.T
     K = (K + K.T) / 2.0
     return K
+
+def compute_cross_ntk(J1: torch.Tensor, J2: torch.Tensor) -> torch.Tensor:
+    return J1 @ J2.T

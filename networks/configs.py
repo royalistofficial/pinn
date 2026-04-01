@@ -9,6 +9,8 @@ class NetworkConfig:
     in_dim: int = 2
     out_dim: int = 1
     hidden_dim: int = 64
+    grid_size: int = 5
+    spline_order: int = 3
     n_layers: int = 4
     activation: str = "tanh"
 
@@ -82,7 +84,7 @@ class NetworkConfig:
             spline_order=spline_order,
             **kwargs
         )
-    
+
     @classmethod
     def cheby_kan(cls, hidden_dim: int = 16, n_layers: int = 2,
             degree: int = 5, **kwargs) -> "NetworkConfig":

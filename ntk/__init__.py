@@ -1,4 +1,4 @@
-from .compute import compute_jacobian, compute_pde_jacobian, compute_bc_jacobian, compute_ntk_from_jacobian
+from .compute import compute_jacobian, compute_pde_jacobian, compute_bc_jacobian, compute_ntk_from_jacobian, compute_cross_ntk
 from .spectrum import compute_spectrum
 from .metrics import get_all_metrics
 from .dashboard import plot_ntk_master_dashboard
@@ -9,6 +9,7 @@ __all__ = [
     "compute_pde_jacobian",
     "compute_bc_jacobian",
     "compute_ntk_from_jacobian",
+    "compute_cross_ntk",
     "compute_spectrum",
     "get_all_metrics",
     "plot_ntk_master_dashboard",

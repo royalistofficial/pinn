@@ -125,7 +125,7 @@ def plot_ntk_master_dashboard(
     ax8.grid(axis='y', alpha=0.3)
 
     ax9 = fig.add_subplot(gs[2, 2])
-    frob_vals = [data["metrics"]["frobenius_norm"] for _, data in comps]
+    frob_vals = [data.get("metrics", {}).get("frobenius_norm", 0.0) for _, data in comps]
     bars3 = ax9.bar(names, frob_vals, color=colors, alpha=0.8)
     ax9.set_title("9. Норма Фробениуса $||K||_F$", fontweight='bold')
     ax9.set_ylabel("Норма")
