@@ -15,7 +15,7 @@ class BSplineKANLayer(nn.Module):
 
         self.n_coeffs = grid_size + spline_order
 
-        self.coeffs = nn.Parameter(torch.empty(out_dim, in_dim, self.n_coeffs))
+        self.coeffs = nn.Parameter(torch.empty(out_dim, in_dim * self.n_coeffs))
         nn.init.normal_(self.coeffs, mean=0.0, std=0.1)
 
         self.base_weight = nn.Parameter(torch.empty(out_dim, in_dim))
@@ -65,8 +65,10 @@ class BSplineKANLayer(nn.Module):
 
         spline_basis = self.b_spline(x, grid)
 
-        B, I, C = spline_basis.shape
-        spline_out = F.linear(spline_basis.reshape(B, I * C), self.coeffs.reshape(self.out_dim, I * C))
+        B = spline_basis.shape[0]
+        
+        spline_flat = spline_basis.view(B, -1)
+        spline_out = F.linear(spline_flat, self.coeffs)
 
         base_out = F.linear(self.base_activation(x), self.base_weight)
 

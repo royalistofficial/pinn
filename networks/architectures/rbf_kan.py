@@ -17,7 +17,7 @@ class RBFKANLayer(nn.Module):
 
         self.widths = nn.Parameter(torch.ones(in_dim, num_centers) * (2.0 / num_centers))
 
-        self.weights = nn.Parameter(torch.empty(out_dim, in_dim, num_centers))
+        self.weights = nn.Parameter(torch.empty(out_dim, in_dim * num_centers))
         nn.init.normal_(self.weights, std=0.1)
 
         self.base_weight = nn.Parameter(torch.empty(out_dim, in_dim))
@@ -30,7 +30,8 @@ class RBFKANLayer(nn.Module):
 
         rbf = torch.exp(-((x_u - self.centers) ** 2) / (self.widths ** 2 + 1e-8)) 
 
-        y_rbf = torch.einsum("bic,oic->bo", rbf, self.weights)
+        rbf_flat = rbf.view(x.shape[0], -1) 
+        y_rbf = F.linear(rbf_flat, self.weights)
 
         y_base = F.linear(self.base_activation(x), self.base_weight)
 

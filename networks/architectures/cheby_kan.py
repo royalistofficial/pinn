@@ -1,6 +1,7 @@
 import math
 import torch
 import torch.nn as nn
+import torch.nn.functional as F  # Импортируем F для использования F.linear
 
 class ChebyKANLayer(nn.Module):
     def __init__(self, in_dim: int, out_dim: int, degree: int = 5, residual: bool = True):
@@ -12,7 +13,8 @@ class ChebyKANLayer(nn.Module):
         self.residual = residual and (in_dim == out_dim)
 
         std = 1.0 / math.sqrt(in_dim * (degree + 1))
-        self.coeffs = nn.Parameter(torch.empty(out_dim, in_dim, degree + 1))
+        
+        self.coeffs = nn.Parameter(torch.empty(out_dim, in_dim * (degree + 1)))
         nn.init.normal_(self.coeffs, mean=0.0, std=std)
 
         self.register_buffer("_scale", torch.tensor(1.0 / math.sqrt(in_dim)))
@@ -25,12 +27,13 @@ class ChebyKANLayer(nn.Module):
 
         xc = x.clamp(-1.0 + 1e-6, 1.0 - 1e-6)   
 
-        T = [torch.ones(batch, self.in_dim, dtype=x.dtype, device=x.device), xc]
+        T = [torch.ones_like(xc), xc]
         for k in range(2, self.degree + 1):
             T.append(2.0 * xc * T[-1] - T[-2])
 
-        T_stack = torch.stack(T, dim=-1)   
-        y = torch.einsum("oij,bij->bo", self.coeffs, T_stack)
+        T_stack = torch.stack(T, dim=-1).view(batch, -1)   
+        y = F.linear(T_stack, self.coeffs)
+        
         y = y * self._scale
 
         if self.residual:

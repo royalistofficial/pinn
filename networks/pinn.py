@@ -26,7 +26,7 @@ class PINNFactory:
         "siren": SIREN,
         "fourier": FourierNet,
         "pi-dbsn": PIDBSN,
-        "cheby_kann": ScaledCPIKAN,
+        "cheby_kan": ScaledCPIKAN,
         "rbf-kan": RBFKAN,
         "wav-kan": WavKAN,
     }

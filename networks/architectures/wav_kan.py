@@ -3,7 +3,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
 class WavKANLayer(nn.Module):
     def __init__(self, in_dim: int, out_dim: int, num_wavelets: int = 5, residual: bool = True):
         super().__init__()
@@ -15,7 +14,7 @@ class WavKANLayer(nn.Module):
         self.translation = nn.Parameter(torch.zeros(in_dim, num_wavelets))
         self.scale = nn.Parameter(torch.zeros(in_dim, num_wavelets))
 
-        self.weights = nn.Parameter(torch.empty(out_dim, in_dim, num_wavelets))
+        self.weights = nn.Parameter(torch.empty(out_dim, in_dim * num_wavelets))
         nn.init.normal_(self.weights, std=0.1)
 
         self.base_weight = nn.Parameter(torch.empty(out_dim, in_dim))
@@ -33,11 +32,11 @@ class WavKANLayer(nn.Module):
 
         wav = self.mexican_hat(x_norm)
 
-        B, I, W = wav.shape
-        wav = wav.reshape(B, I * W)
-        weights = self.weights.reshape(self.out_dim, I * W)
+        B = wav.shape[0]
 
-        y_wav = F.linear(wav, weights)
+        wav_flat = wav.view(B, -1)
+        y_wav = F.linear(wav_flat, self.weights)
+        
         y_base = F.linear(self.base_activation(x), self.base_weight)
 
         y = y_wav + y_base
