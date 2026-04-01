@@ -73,12 +73,24 @@ class NetworkConfig:
 
     @classmethod
     def kan(cls, hidden_dim: int = 16, n_layers: int = 2,
+            grid_size: int = 5, spline_order: int = 3, **kwargs) -> "NetworkConfig":
+        return cls(
+            architecture="kan",
+            hidden_dim=hidden_dim,
+            n_layers=n_layers,
+            grid_size=grid_size,
+            spline_order=spline_order,
+            **kwargs
+        )
+    
+    @classmethod
+    def cheby_kan(cls, hidden_dim: int = 16, n_layers: int = 2,
             degree: int = 5, **kwargs) -> "NetworkConfig":
         return cls(
             architecture="kan",
             hidden_dim=hidden_dim,
             n_layers=n_layers,
-            kan_degree=degree,
+            degree=degree,
             **kwargs
         )
 

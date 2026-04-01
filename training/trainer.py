@@ -366,6 +366,7 @@ class Trainer:
 
     def _run_ntk_analysis(self, epoch: int) -> None:
         quad = self.data.sample.quad
+        weights = self.weight_balancer.get_weights()
 
         result = self.ntk_analyzer.analyze(
             epoch=epoch,
@@ -373,10 +374,12 @@ class Trainer:
             X_boundary=quad.xy_bd,
             normals=quad.normals,
             bc_mask=quad.bc_mask,
+            w_pde=weights['pde'],
+            w_dirichlet=weights['dirichlet'],
+            w_neumann=weights['neumann'] 
         )
 
         if AUTO_BALANCE_ENABLED:
-            weights = self.weight_balancer.get_weights()
             self.logger(
                 f"[Weight-Info] Current adaptive weights: "
                 f"w_pde={weights['pde']:.3f}, "

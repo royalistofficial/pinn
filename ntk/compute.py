@@ -47,7 +47,7 @@ def compute_pde_jacobian(model: nn.Module, X: torch.Tensor) -> torch.Tensor:
 
             H = hessian(u_fn)(x)
 
-            laplacian = H[0, 0] + H[1, 1] 
+            laplacian = torch.trace(H)
             return -laplacian 
 
         return jacrev(pde_res)(p)
@@ -76,7 +76,7 @@ def compute_bc_jacobian(
         return torch.zeros(0, P, device=xy_boundary.device)
 
     def fmodel(p, b, x):
-        return functional_call(model, (p, b), (x.unsqueeze(0),)).squeeze()
+        return functional_call(model, (p, b), (x.unsqueeze(0),)).squeeze(-1)
 
     def compute_single_dirichlet(p, b, x):
         def f(weights):

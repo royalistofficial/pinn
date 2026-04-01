@@ -1,5 +1,6 @@
 from __future__ import annotations
 import os
+import math
 from dataclasses import dataclass, field
 from typing import Dict, Any, List, Optional, Callable
 
@@ -52,11 +53,15 @@ class NTKAnalyzer:
         self.history: List[NTKResult] = []
         os.makedirs(output_dir, exist_ok=True)
 
-    def _build_dashboard_components(self, J_in, J_D, J_N) -> dict:
+    def _build_dashboard_components(self, J_in, J_D, J_N, w_pde=1.0, w_dir=1.0, w_neu=1.0) -> dict:
         components = {}
 
         def is_valid(J):
             return J is not None and J.shape[0] > 0
+
+        J_in_scaled = J_in * math.sqrt(w_pde) if is_valid(J_in) else None
+        J_D_scaled = J_D * math.sqrt(w_dir) if is_valid(J_D) else None
+        J_N_scaled = J_N * math.sqrt(w_neu) if is_valid(J_N) else None
 
         def add_comp(name: str, J: Optional[torch.Tensor], color: str, marker: str):
             if not is_valid(J): 
@@ -98,6 +103,9 @@ class NTKAnalyzer:
         X_boundary: Optional[torch.Tensor] = None,
         normals: Optional[torch.Tensor] = None,
         bc_mask: Optional[torch.Tensor] = None,
+        w_pde: float = 1.0,
+        w_dirichlet: float = 1.0,
+        w_neumann: float = 1.0,
     ) -> NTKResult:
         device = next(self.model.parameters()).device
         self.logger(f"[NTK] Строгий спектральный анализ для эпохи {epoch}...")
@@ -107,7 +115,8 @@ class NTKAnalyzer:
 
         J_u_in = compute_jacobian(self.model, X_in)
 
-        J_pde_in = compute_pde_jacobian(self.model, X_in)
+        J_pde_in = compute_pde_jacobian(self.model, X_in, 
+        w_pde=w_pde, w_dir=w_dirichlet, w_neu=w_neumann)
 
         J_u_D, J_u_N = None, None
         J_pde_D, J_pde_N = None, None
