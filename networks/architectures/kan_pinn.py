@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
 class BSplineKANLayer(nn.Module):
     def __init__(self, in_dim: int, out_dim: int, grid_size: int = 5, spline_order: int = 3, residual: bool = True):
         super().__init__()
@@ -24,48 +25,48 @@ class BSplineKANLayer(nn.Module):
         step = 2.0 / grid_size
         n_knots = grid_size + 2 * spline_order + 1
 
-        self.grid_steps_log = nn.Parameter(
-            torch.log(torch.ones(in_dim, n_knots - 1) * step)
-        )
-
-        self.grid_start = nn.Parameter(
-            torch.ones(in_dim, 1) * (-1.0 - step * spline_order)
-        )
+        self.grid_steps_log = nn.Parameter(torch.log(torch.ones(in_dim, n_knots - 1) * step))
+        self.grid_start = nn.Parameter(torch.ones(in_dim, 1) * (-1.0 - step * spline_order))
 
         if self.residual:
             self.res_scale = nn.Parameter(torch.zeros(1))
 
-    def get_grid(self) -> torch.Tensor:
-
-        steps = F.softplus(self.grid_steps_log) 
-
+    def get_grid(self):
+        steps = F.softplus(self.grid_steps_log)
         grid_offsets = torch.cumsum(steps, dim=1)
+        return torch.cat([self.grid_start, self.grid_start + grid_offsets], dim=1)
 
-        grid = torch.cat([self.grid_start, self.grid_start + grid_offsets], dim=1)
-        return grid
-
-    def b_spline(self, x: torch.Tensor) -> torch.Tensor:
-
-        grid = self.get_grid() 
-
+    def b_spline(self, x, grid):
         x = x.unsqueeze(-1)
-        bases = ((x >= grid[:, :-1]) & (x < grid[:, 1:])).to(x.dtype)
+        left = grid[:, :-1]
+        right = grid[:, 1:]
 
-        for k in range(1, self.spline_order + 1):
-            left_den = grid[:, k:-1] - grid[:, :-(k + 1)]
-            left = (x - grid[:, :-(k + 1)]) / torch.where(left_den == 0, torch.ones_like(left_den), left_den)
+        bases = ((x >= left) & (x < right)).to(x.dtype)
 
-            right_den = grid[:, k + 1:] - grid[:, 1:-k]
-            right = (grid[:, k + 1:] - x) / torch.where(right_den == 0, torch.ones_like(right_den), right_den)
+        eps = 1e-8
+        denom = grid[:, 1:] - grid[:, :-1]
+
+        for k in range(self.spline_order):
+            left_den = denom[:, :-1 - k]
+            right_den = denom[:, 1 + k:]
+
+            left_num = x - grid[:, :-(2 + k)]
+            right_num = grid[:, 2 + k:] - x
+
+            left = left_num / (left_den + eps)
+            right = right_num / (right_den + eps)
 
             bases = left * bases[:, :, :-1] + right * bases[:, :, 1:]
 
         return bases
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x):
+        grid = self.get_grid()
 
-        spline_basis = self.b_spline(x) 
-        spline_out = torch.einsum("oic,bic->bo", self.coeffs, spline_basis)
+        spline_basis = self.b_spline(x, grid)
+
+        B, I, C = spline_basis.shape
+        spline_out = F.linear(spline_basis.reshape(B, I * C), self.coeffs.reshape(self.out_dim, I * C))
 
         base_out = F.linear(self.base_activation(x), self.base_weight)
 
@@ -74,9 +75,8 @@ class BSplineKANLayer(nn.Module):
         if self.residual:
             y = y + self.res_scale * x
 
-        y = torch.tanh(y)
+        return torch.tanh(y)
 
-        return y
 
 class BSplineKAN(nn.Module):
     def __init__(self, config):
@@ -101,8 +101,8 @@ class BSplineKAN(nn.Module):
         nn.init.normal_(self.head.weight, std=0.01)
         nn.init.zeros_(self.head.bias)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        h = x  
+    def forward(self, x):
+        h = x
         for layer in self.layers:
             h = layer(h)
         return self.head(h)

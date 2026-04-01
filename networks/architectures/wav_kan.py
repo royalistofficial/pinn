@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
 class WavKANLayer(nn.Module):
     def __init__(self, in_dim: int, out_dim: int, num_wavelets: int = 5, residual: bool = True):
         super().__init__()
@@ -21,19 +22,22 @@ class WavKANLayer(nn.Module):
         nn.init.kaiming_uniform_(self.base_weight, a=math.sqrt(5))
         self.base_activation = nn.SiLU()
 
-    def mexican_hat(self, x: torch.Tensor) -> torch.Tensor:
+    def mexican_hat(self, x):
         return (1.0 - x ** 2) * torch.exp(-0.5 * x ** 2)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x):
+        x_u = x.unsqueeze(-1)
 
-        x_u = x.unsqueeze(-1) 
+        scale = self.scale.exp() + 1e-8
+        x_norm = (x_u - self.translation) / scale
 
-        x_norm = (x_u - self.translation) / (self.scale.exp() + 1e-8)
+        wav = self.mexican_hat(x_norm)
 
-        wav = self.mexican_hat(x_norm) 
+        B, I, W = wav.shape
+        wav = wav.reshape(B, I * W)
+        weights = self.weights.reshape(self.out_dim, I * W)
 
-        y_wav = torch.einsum("biw,oiw->bo", wav, self.weights)
-
+        y_wav = F.linear(wav, weights)
         y_base = F.linear(self.base_activation(x), self.base_weight)
 
         y = y_wav + y_base
@@ -42,6 +46,7 @@ class WavKANLayer(nn.Module):
             y = y + x
 
         return y
+
 
 class WavKAN(nn.Module):
     def __init__(self, config):
@@ -54,6 +59,7 @@ class WavKAN(nn.Module):
         num_wavelets = getattr(config, 'num_wavelets', 5)
 
         self.layers = nn.ModuleList()
+
         self.layers.append(WavKANLayer(in_dim, hidden_dim, num_wavelets, residual=False))
 
         for _ in range(n_layers - 1):
@@ -63,7 +69,7 @@ class WavKAN(nn.Module):
         nn.init.xavier_normal_(self.head.weight)
         nn.init.zeros_(self.head.bias)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x):
         h = x
         for layer in self.layers:
             h = layer(h)

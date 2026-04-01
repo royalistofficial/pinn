@@ -199,8 +199,8 @@ def plot_solution_fields(
     panels = [
         (v, f"Решение v (Эпоха {epoch})", "viridis", False, False),
         (u_exact, "Точное решение u", "viridis", False, False),
-        (abs_error, "Абсолютная ошибка |u - v|", "turbo", False, True),
-        (energy_density, r"Энергетическая ошибка $|\nabla e|^2$", "turbo", True, True),
+        (abs_error, "Абсолютная ошибка |u - v|", "turbo",True, True),
+        (energy_density, r"Ошибка градиентов $|\nabla u - \nabla v|$", "turbo", True, True),
     ]
 
     for ax, (vals, title, cmap, cz, ul) in zip(axes.flat, panels):

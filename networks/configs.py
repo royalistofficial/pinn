@@ -89,7 +89,7 @@ class NetworkConfig:
     def cheby_kan(cls, hidden_dim: int = 16, n_layers: int = 2,
             degree: int = 5, **kwargs) -> "NetworkConfig":
         return cls(
-            architecture="kan",
+            architecture="cheby_kan",
             hidden_dim=hidden_dim,
             n_layers=n_layers,
             degree=degree,
@@ -134,10 +134,11 @@ DEFAULT_CONFIG = NetworkConfig.mlp()
 
 PRESET_CONFIGS = {
     "mlp": NetworkConfig.mlp(),
-    "siren": NetworkConfig.siren(),
     "fourier": NetworkConfig.fourier(),
-    "kan": NetworkConfig.kan(),
+    "siren": NetworkConfig.siren(),
     "pi-dbsn": NetworkConfig.pi_dbsn(),
+    "kan": NetworkConfig.kan(),
+    "cheby_kan": NetworkConfig.kan(),
     "rbf-kan": NetworkConfig.rbf_kan(),
     "wav-kan": NetworkConfig.wav_kan(),
 }

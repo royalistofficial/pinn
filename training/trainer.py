@@ -106,7 +106,8 @@ class Trainer:
             f"Training PINN | Phase 1: Adam ({ADAM_EPOCHS} ep) | Phase 2: L-BFGS ({LBFGS_EPOCHS} ep)"
         )
 
-        alpha = 0.9  
+        alpha = 0.75
+        min_delta = 1e-6  
 
         ep = 0
         ep_adam = None
@@ -144,7 +145,7 @@ class Trainer:
                 if ep % 100 == 0:
                     self.callback.plot_fields(ep)
 
-                if ema_loss < best_ema:
+                if ema_loss < best_ema - min_delta:
                     best_ema = ema_loss
                     patience_counter = 0
                 else:
@@ -189,7 +190,7 @@ class Trainer:
                 if ep % 100 == 0:
                     self.callback.plot_fields(ep)
 
-                if ema_loss < best_ema:
+                if ema_loss < best_ema - min_delta:
                     best_ema = ema_loss
                     patience_counter = 0
                 else:

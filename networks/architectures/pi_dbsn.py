@@ -3,6 +3,7 @@ import torch.nn as nn
 import math
 import torch.nn.functional as F
 
+
 class BSplineLayer(nn.Module):
     def __init__(self, in_dim: int, out_dim: int, grid_size: int = 5, spline_order: int = 3, residual: bool = True):
         super().__init__()
@@ -24,51 +25,52 @@ class BSplineLayer(nn.Module):
         step = 2.0 / grid_size
         n_knots = grid_size + 2 * spline_order + 1
 
-        self.grid_steps_log = nn.Parameter(
-            torch.log(torch.ones(in_dim, n_knots - 1) * step)
-        )
-
-        self.grid_start = nn.Parameter(
-            torch.ones(in_dim, 1) * (-1.0 - step * spline_order)
-        )
+        self.grid_steps_log = nn.Parameter(torch.log(torch.ones(in_dim, n_knots - 1) * step))
+        self.grid_start = nn.Parameter(torch.ones(in_dim, 1) * (-1.0 - step * spline_order))
 
         if self.residual:
             self.res_scale = nn.Parameter(torch.zeros(1))
 
-    def get_grid(self) -> torch.Tensor:
+    def get_grid(self):
+        steps = F.softplus(self.grid_steps_log)
+        return torch.cat([self.grid_start, self.grid_start + torch.cumsum(steps, dim=1)], dim=1)
 
-        steps = F.softplus(self.grid_steps_log) 
+    def b_spline(self, x, grid):
+        eps = 1e-8
+        x = x.unsqueeze(-1)
 
-        grid_offsets = torch.cumsum(steps, dim=1)
+        left = grid[:, :-1]
+        right = grid[:, 1:]
 
-        grid = torch.cat([self.grid_start, self.grid_start + grid_offsets], dim=1)
-        return grid
+        bases = ((x >= left) & (x < right)).to(x.dtype)
 
-    def b_spline(self, x: torch.Tensor) -> torch.Tensor:
+        denom = grid[:, 1:] - grid[:, :-1]
 
-        grid = self.get_grid()
+        for k in range(self.spline_order):
+            left_den = denom[:, :-1 - k]
+            right_den = denom[:, 1 + k:]
 
-        x = x.unsqueeze(-1) 
+            left_num = x - grid[:, :-(2 + k)]
+            right_num = grid[:, 2 + k:] - x
 
-        bases = ((x >= grid[:, :-1]) & (x < grid[:, 1:])).to(x.dtype)
-
-        for k in range(1, self.spline_order + 1):
-
-            denom1 = grid[:, k:-1] - grid[:, :-(k + 1)]
-            left = (x - grid[:, :-(k + 1)]) / torch.where(denom1 == 0, torch.ones_like(denom1), denom1)
-
-            denom2 = grid[:, k + 1:] - grid[:, 1:-k]
-            right = (grid[:, k + 1:] - x) / torch.where(denom2 == 0, torch.ones_like(denom2), denom2)
+            left = left_num / (left_den + eps)
+            right = right_num / (right_den + eps)
 
             bases = left * bases[:, :, :-1] + right * bases[:, :, 1:]
 
         return bases
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x):
+        grid = self.get_grid()
 
-        spline_basis = self.b_spline(x) 
+        spline_basis = self.b_spline(x, grid)
 
-        spline_out = torch.einsum("oic,bic->bo", self.coeffs, spline_basis)
+        B, I, C = spline_basis.shape
+
+        spline_out = F.linear(
+            spline_basis.reshape(B, I * C),
+            self.coeffs.reshape(self.out_dim, I * C)
+        )
 
         base_out = F.linear(self.base_activation(x), self.base_weight)
 
@@ -77,9 +79,8 @@ class BSplineLayer(nn.Module):
         if self.residual:
             y = y + self.res_scale * x
 
-        y = torch.tanh(y)
+        return torch.tanh(y)
 
-        return y
 
 class PIDBSN(nn.Module):
     def __init__(self, config):
@@ -103,9 +104,8 @@ class PIDBSN(nn.Module):
         nn.init.xavier_normal_(self.head.weight)
         nn.init.zeros_(self.head.bias)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-
-        h = x 
+    def forward(self, x):
+        h = x
         for layer in self.layers:
             h = layer(h)
         return self.head(h)

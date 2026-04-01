@@ -51,13 +51,13 @@ def evaluate_fields(
 
     vn = v.detach().squeeze(-1).cpu().numpy()
     gn = gv.detach().cpu().numpy()
-    en_err = np.clip(((gn - eg) ** 2).sum(-1), 0, None)
+    grad_abs_err = np.sqrt(np.clip(((gn - eg) ** 2).sum(-1), 0, None))
 
     return FieldValues(
         v=vn,
         u_exact=ue,
         abs_error=np.abs(vn - ue),
-        energy_density=en_err,
+        energy_density=grad_abs_err,
     )
 
 def plot_mesh(

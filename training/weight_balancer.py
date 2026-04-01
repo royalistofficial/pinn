@@ -8,8 +8,8 @@ class WeightConfig:
     enabled: bool = False
     update_every: int = 100
     momentum: float = 0.95
-    min_weight = 1e-2
-    max_weight = 1e+2
+    min_weight = 1e-3
+    max_weight = 1e+3
 
     w_pde_init: float = 1.0
     w_dirichlet_init: float = 1.0
@@ -55,7 +55,7 @@ class WeightBalancer:
 
         eps = 1e-10
 
-        max_grad = max(self._smooth_norm["pde"], self._smooth_norm["dir"], self._smooth_norm["neu"])
+        max_grad = self._smooth_norm["pde"]
 
         new_w_pde = max_grad / (self._smooth_norm["pde"] + eps)
         new_w_dir = max_grad / (self._smooth_norm["dir"] + eps)

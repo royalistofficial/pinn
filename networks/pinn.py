@@ -15,7 +15,8 @@ from networks.architectures import (
     WavKAN,
     MLP,
     SIREN,
-    FourierNet
+    FourierNet,
+    ScaledCPIKAN
 )
 
 class PINNFactory:
@@ -25,6 +26,7 @@ class PINNFactory:
         "siren": SIREN,
         "fourier": FourierNet,
         "pi-dbsn": PIDBSN,
+        "cheby_kann": ScaledCPIKAN,
         "rbf-kan": RBFKAN,
         "wav-kan": WavKAN,
     }

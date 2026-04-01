@@ -1,5 +1,5 @@
 from .mlp import MLP
-from .siren import SIREN, SirenLayer
+from .siren import SIREN
 from .fourier import FourierNet
 from .kan_pinn import BSplineKAN
 from .cheby_kan import ScaledCPIKAN
