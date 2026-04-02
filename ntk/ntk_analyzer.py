@@ -90,22 +90,22 @@ class NTKAnalyzer:
         add_comp("Блок Уравнения (K_rr)", J_in_scaled, "#2563EB", "o")
         add_comp("Блок Границы (K_bb)", J_b_scaled, "#059669", "s")
 
-        if is_valid(J_in_scaled) and is_valid(J_b_scaled):
+        # if is_valid(J_in_scaled) and is_valid(J_b_scaled):
 
-            K_rb = compute_cross_ntk(J_in_scaled, J_b_scaled)
+        #     K_rb = compute_cross_ntk(J_in_scaled, J_b_scaled)
 
-            S = torch.linalg.svdvals(K_rb).detach().cpu().numpy()
+        #     S = torch.linalg.svdvals(K_rb).detach().cpu().numpy()
 
-            if len(S) > 0:
+            # if len(S) > 0:
 
-                metrics_rb = get_all_metrics(K_rb.detach().cpu().numpy(), S)
+                # metrics_rb = get_all_metrics(K_rb.detach().cpu().numpy(), S)
 
-                components["Интерференция (K_rb)"] = {
-                    "eigenvalues": S,
-                    "metrics": metrics_rb,
-                    "color": "#8B5CF6", 
-                    "marker": "x"
-                }
+                # components["Интерференция (K_rb)"] = {
+                #     "eigenvalues": S,
+                #     "metrics": metrics_rb,
+                #     "color": "#8B5CF6", 
+                #     "marker": "x"
+                # }
 
         if is_valid(J_D_scaled) and is_valid(J_N_scaled):
             add_comp("Детали: Дирихле", J_D_scaled, "#10B981", "^")

@@ -59,7 +59,7 @@ def plot_ntk_master_dashboard(
         cum = np.cumsum(eig) / np.sum(eig)
         ax3.plot(k_idx_norm, cum, color=data["color"], linewidth=2.5, alpha=0.85, label=name)
         idx_90 = np.argmax(cum >= 0.9)
-        if cum[idx_90] >= 0.9:
+        if cum[idx_90] >= 0.9 and name == "Полная матрица (K_full)":
             k_90_norm = k_idx_norm[idx_90]
             val_90 = cum[idx_90]
             ax3.scatter(k_90_norm, val_90, color=data["color"], s=50, zorder=5, 

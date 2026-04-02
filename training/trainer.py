@@ -91,14 +91,11 @@ class Trainer:
         try:
             if hasattr(domain, 'vertices'):
                 verts = domain.vertices
-
                 from scipy.spatial.distance import pdist
                 return float(np.max(pdist(verts)))
             elif hasattr(domain, 'Lx') and hasattr(domain, 'Ly'):
-
                 return float(np.sqrt(domain.Lx**2 + domain.Ly**2))
             else:
-
                 return 1.0
         except Exception:
             return 1.0
@@ -131,7 +128,7 @@ class Trainer:
 
             for _ in range(ADAM_EPOCHS):
                 ep += 1
-                loss_info = self._train_epoch_adam(bd_iter)
+                loss_info = self._train_epoch_adam(bd_iter, epoch=ep)
                 avg_loss = loss_info["loss"]
 
                 if ema_loss is None:
@@ -176,7 +173,7 @@ class Trainer:
 
             for _ in range(LBFGS_EPOCHS):
                 ep += 1
-                loss_info = self._train_epoch_lbfgs(bd_iter)
+                loss_info = self._train_epoch_lbfgs(bd_iter, epoch=ep)
                 avg_loss = loss_info["loss"]
 
                 if ema_loss is None:
@@ -220,11 +217,11 @@ class Trainer:
         self.callback.on_training_end()
         self._finalize()
 
-    def _train_epoch_adam(self, bd_iter) -> dict:
+    def _train_epoch_adam(self, bd_iter, epoch: int) -> dict:
         ep_loss = ep_pde = ep_dir = ep_neu = 0.0
         n_batches = len(self.data.in_loader)
 
-        for batch_in in self.data.in_loader:
+        for batch_idx, batch_in in enumerate(self.data.in_loader):
             xy_in, f_in, _, _, _ = batch_in
             xy_bd, normals, g_D, g_N, bc_mask, _, _, _ = next(bd_iter)
 
@@ -232,7 +229,10 @@ class Trainer:
             xq = xy_in.clone().requires_grad_(True)
             xb = xy_bd.clone().requires_grad_(True)
 
-            loss_dict = self._compute_loss(xq, xb, f_in, normals, g_D, g_N, bc_mask)
+            # Обновляем веса NTK только на первом батче и только раз в 10 эпох (или на самой первой эпохе)
+            update_w = AUTO_BALANCE_ENABLED and (epoch == 1 or epoch % 10 == 0) and (batch_idx == 0)
+
+            loss_dict = self._compute_loss(xq, xb, f_in, normals, g_D, g_N, bc_mask, update_weights=update_w)
             loss = loss_dict["total"]
 
             loss.backward()
@@ -249,8 +249,7 @@ class Trainer:
             "dir_loss": ep_dir / n_batches, "neu_loss": ep_neu / n_batches,
         }
 
-    def _train_epoch_lbfgs(self, bd_iter) -> dict:
-
+    def _train_epoch_lbfgs(self, bd_iter, epoch: int) -> dict:
         batch_in = next(iter(self.data.in_loader))
         xy_in, f_in, _, _, _ = batch_in
         xy_bd, normals, g_D, g_N, bc_mask, _, _, _ = next(bd_iter)
@@ -259,10 +258,17 @@ class Trainer:
         xb = xy_bd.clone().requires_grad_(True)
 
         loss_dict_tracker = {}
+        closure_calls = {"count": 0}
 
         def closure():
             self.opt_lbfgs.zero_grad(set_to_none=True)
-            loss_dict = self._compute_loss(xq, xb, f_in, normals, g_D, g_N, bc_mask)
+            
+            # В L-BFGS `closure` вызывается несколько раз (line search).
+            # Пересчитываем веса строго один раз при первом входе в closure, если эпоха кратна 10
+            update_w = AUTO_BALANCE_ENABLED and (epoch == 1 or epoch % 10 == 0) and (closure_calls["count"] == 0)
+            closure_calls["count"] += 1
+
+            loss_dict = self._compute_loss(xq, xb, f_in, normals, g_D, g_N, bc_mask, update_weights=update_w)
             loss = loss_dict["total"]
             loss.backward()
 
@@ -282,24 +288,32 @@ class Trainer:
             "neu_loss": loss_dict_tracker.get("neumann", 0.0),
         }
 
-    def grad_norm(self, loss: torch.Tensor) -> float:
-        self.pinn.zero_grad()
-        loss.backward(retain_graph=True)
-
-        grads = []
-
-        for p in self.pinn.parameters():
-            if p.grad is not None:
-                grads.append(p.grad.detach().view(-1))
-
-        if len(grads) == 0:
+    def ntk_trace(self, x: torch.Tensor, mode: str = "pde", normals: torch.Tensor | None = None) -> float:
+        """
+        Вычисляет след матрицы NTK (Neural Tangent Kernel) для переданных точек.
+        Для предотвращения OOM (Out Of Memory) на больших батчах применяется субсэмплинг.
+        """
+        from ntk.compute import compute_pde_jacobian, compute_bc_jacobian, compute_ntk_from_jacobian
+        
+        if x.shape[0] == 0:
             return 0.0
-
-        grad_vector = torch.cat(grads)
-
-        norm = torch.norm(grad_vector, p=2)
-
-        return norm.item()
+            
+        n_points = min(x.shape[0], NTK_ANALYSIS_POINTS)
+        idx = torch.linspace(0, x.shape[0] - 1, n_points, device=x.device).long()
+        x_sub = x[idx]
+        
+        if mode == "pde":
+            J = compute_pde_jacobian(self.pinn, x_sub)
+        elif mode == "dirichlet":
+            J = compute_bc_jacobian(self.pinn, x_sub, bc_type="dirichlet")
+        elif mode == "neumann":
+            normals_sub = normals[idx] if normals is not None else None
+            J = compute_bc_jacobian(self.pinn, x_sub, normals=normals_sub, bc_type="neumann")
+        else:
+            return 0.0
+            
+        K = compute_ntk_from_jacobian(J)
+        return torch.trace(K).item()
 
     def _compute_loss(
                 self,
@@ -310,6 +324,7 @@ class Trainer:
                 g_D: torch.Tensor,
                 g_N: torch.Tensor,
                 bc_mask: torch.Tensor,
+                update_weights: bool = False
             ) -> dict:
         from functionals.operators import laplacian, gradient
 
@@ -331,23 +346,32 @@ class Trainer:
             neu_mask = 1.0 - bc_mask
             loss_neu = (diff_N ** 2 * neu_mask).sum() / (neu_mask.sum() + 1e-8)
 
-        if AUTO_BALANCE_ENABLED:
-            grad_pde_norm = self.grad_norm(loss_pde)
-            grad_dir_norm =  self.grad_norm(loss_dir)
-
-            grad_neu_norm = 0.0
+        # Выполняем дорогостоящий перерасчет весов только если передан флаг
+        if update_weights:
+            mask_dir_bool = (bc_mask > 0.5).squeeze(-1)
+            mask_neu_bool = (bc_mask <= 0.5).squeeze(-1)
+            
+            trace_pde = self.ntk_trace(xq, mode="pde")
+            
+            xb_dir = xb[mask_dir_bool]
+            trace_dir = self.ntk_trace(xb_dir, mode="dirichlet") if len(xb_dir) > 0 else 0.0
+            
+            trace_neu = 0.0
             if self.has_neumann:
-                grad_neu_norm =  self.grad_norm(loss_neu)
+                xb_neu = xb[mask_neu_bool]
+                normals_neu = normals[mask_neu_bool]
+                trace_neu = self.ntk_trace(xb_neu, mode="neumann", normals=normals_neu) if len(xb_neu) > 0 else 0.0
 
-            w_pde, w_dir, w_neu = self.weight_balancer.update_from_gradients(
-                grad_pde_norm, grad_dir_norm, grad_neu_norm, bc_penalty=BC_PENALTY
+            self.weight_balancer.update_from_gradients(
+                trace_pde, trace_dir, trace_neu, bc_penalty=BC_PENALTY
             )
             self.pinn.zero_grad() 
-        else:
 
-            w_pde, w_dir, w_neu = self.weight_balancer.update_from_gradients(
-                0.0, 0.0, 0.0, bc_penalty=BC_PENALTY
-            )
+        # Получаем закешированные или только что обновленные веса
+        weights = self.weight_balancer.get_weights()
+        w_pde = weights.get("pde", 1.0)
+        w_dir = weights.get("dirichlet", 1.0)
+        w_neu = weights.get("neumann", 0.0)
 
         total_loss = w_pde * loss_pde + w_dir * loss_dir + w_neu * loss_neu
 
