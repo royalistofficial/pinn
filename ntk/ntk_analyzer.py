@@ -19,9 +19,10 @@ from ntk import (
     compute_cross_ntk,          
     compute_spectrum,
     get_all_metrics,
-    plot_ntk_master_dashboard,
     plot_ntk_evolution  
 )
+
+from visualization import plot_ntk_master_dashboard
 
 @dataclass
 class NTKResult:

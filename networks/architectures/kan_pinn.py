@@ -4,12 +4,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class BSplineKANLayer(nn.Module):
-    def __init__(self, in_dim: int, out_dim: int, grid_size: int = 5, spline_order: int = 3):
+    def __init__(self, in_dim: int, out_dim: int, grid_size: int = 5, spline_order: int = 3, residual: bool = True):
         super().__init__()
         self.in_dim = in_dim
         self.out_dim = out_dim
         self.grid_size = grid_size
         self.spline_order = spline_order
+        self.residual = residual and (in_dim == out_dim)
 
         self.n_coeffs = grid_size + spline_order
 
@@ -25,6 +26,9 @@ class BSplineKANLayer(nn.Module):
 
         self.grid_steps_log = nn.Parameter(torch.log(torch.ones(in_dim, n_knots - 1) * step))
         self.grid_start = nn.Parameter(torch.ones(in_dim, 1) * (-1.0 - step * spline_order))
+
+        if self.residual:
+            self.res_scale = nn.Parameter(torch.zeros(1))
 
     def get_grid(self):
         steps = F.softplus(self.grid_steps_log)
@@ -69,8 +73,10 @@ class BSplineKANLayer(nn.Module):
 
         y = spline_out + base_out
 
-        return y
+        if self.residual:
+            y = y + self.res_scale * x
 
+        return y
 
 class BSplineKAN(nn.Module):
     def __init__(self, config):
@@ -86,10 +92,10 @@ class BSplineKAN(nn.Module):
 
         self.layers = nn.ModuleList()
 
-        self.layers.append(BSplineKANLayer(in_dim, hidden, grid_size, spline_order))
+        self.layers.append(BSplineKANLayer(in_dim, hidden, grid_size, spline_order, residual=False))
 
         for _ in range(n_layers - 1):
-            self.layers.append(BSplineKANLayer(hidden, hidden, grid_size, spline_order))
+            self.layers.append(BSplineKANLayer(hidden, hidden, grid_size, spline_order, residual=True))
 
         self.head = nn.Linear(hidden, out_dim)
         nn.init.normal_(self.head.weight, std=0.01)

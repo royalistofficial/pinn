@@ -9,7 +9,7 @@ from config import (
     DEVICE, ADAM_LR, ADAM_EPOCHS, LBFGS_EPOCHS, LBFGS_LR, 
     LBFGS_MAX_ITER, LBFGS_TOLERANCE_GRAD, LBFGS_TOLERANCE_CHANGE,
     BC_PENALTY, OUTPUT_DIR, NTK_ANALYSIS_EVERY, NTK_ANALYSIS_POINTS, 
-    AUTO_BALANCE_ENABLED
+    AUTO_BALANCE_ENABLED, AUTO_BALANCE_MIN_WEIGHT, AUTO_BALANCE_MAX_WEIGHT
 )
 
 from networks.configs import NetworkConfig
@@ -17,6 +17,7 @@ from networks.pinn import PINN
 
 from training.data_module import DataModule, prepare_sample
 from ntk.ntk_analyzer import NTKAnalyzer
+from ntk.compute import compute_pde_jacobian, compute_bc_jacobian, compute_ntk_from_jacobian
 from training.weight_balancer import WeightBalancer, WeightConfig
 
 from evaluation.metrics import MetricsCalculator
@@ -60,6 +61,7 @@ class Trainer:
         )
 
         self.lr = ADAM_LR
+        
         self.weight_balancer = WeightBalancer(WeightConfig(
             enabled=AUTO_BALANCE_ENABLED,
         ))
@@ -229,7 +231,6 @@ class Trainer:
             xq = xy_in.clone().requires_grad_(True)
             xb = xy_bd.clone().requires_grad_(True)
 
-            # Обновляем веса NTK только на первом батче и только раз в 10 эпох (или на самой первой эпохе)
             update_w = AUTO_BALANCE_ENABLED and (epoch == 1 or epoch % 10 == 0) and (batch_idx == 0)
 
             loss_dict = self._compute_loss(xq, xb, f_in, normals, g_D, g_N, bc_mask, update_weights=update_w)
@@ -263,8 +264,6 @@ class Trainer:
         def closure():
             self.opt_lbfgs.zero_grad(set_to_none=True)
             
-            # В L-BFGS `closure` вызывается несколько раз (line search).
-            # Пересчитываем веса строго один раз при первом входе в closure, если эпоха кратна 10
             update_w = AUTO_BALANCE_ENABLED and (epoch == 1 or epoch % 10 == 0) and (closure_calls["count"] == 0)
             closure_calls["count"] += 1
 
@@ -289,11 +288,6 @@ class Trainer:
         }
 
     def ntk_trace(self, x: torch.Tensor, mode: str = "pde", normals: torch.Tensor | None = None) -> float:
-        """
-        Вычисляет след матрицы NTK (Neural Tangent Kernel) для переданных точек.
-        Для предотвращения OOM (Out Of Memory) на больших батчах применяется субсэмплинг.
-        """
-        from ntk.compute import compute_pde_jacobian, compute_bc_jacobian, compute_ntk_from_jacobian
         
         if x.shape[0] == 0:
             return 0.0
@@ -313,7 +307,8 @@ class Trainer:
             return 0.0
             
         K = compute_ntk_from_jacobian(J)
-        return torch.trace(K).item()
+        
+        return (torch.trace(K) / K.shape[0]).item()
 
     def _compute_loss(
                 self,
@@ -346,7 +341,6 @@ class Trainer:
             neu_mask = 1.0 - bc_mask
             loss_neu = (diff_N ** 2 * neu_mask).sum() / (neu_mask.sum() + 1e-8)
 
-        # Выполняем дорогостоящий перерасчет весов только если передан флаг
         if update_weights:
             mask_dir_bool = (bc_mask > 0.5).squeeze(-1)
             mask_neu_bool = (bc_mask <= 0.5).squeeze(-1)
@@ -367,7 +361,6 @@ class Trainer:
             )
             self.pinn.zero_grad() 
 
-        # Получаем закешированные или только что обновленные веса
         weights = self.weight_balancer.get_weights()
         w_pde = weights.get("pde", 1.0)
         w_dir = weights.get("dirichlet", 1.0)
