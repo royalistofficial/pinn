@@ -9,7 +9,6 @@ class ChebyKANLayer(nn.Module):
         self.in_dim = in_dim
         self.out_dim = out_dim
         self.degree = degree
-
         self.residual = residual and (in_dim == out_dim)
 
         std = 1.0 / math.sqrt(in_dim * (degree + 1))
@@ -25,15 +24,14 @@ class ChebyKANLayer(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         batch = x.shape[0]
 
-        xc = x.clamp(-1.0 + 1e-6, 1.0 - 1e-6)   
+        xc = x.clamp(-0.9999, 0.9999)   
 
-        T = [torch.ones_like(xc), xc]
-        for k in range(2, self.degree + 1):
-            T.append(2.0 * xc * T[-1] - T[-2])
-
-        T_stack = torch.stack(T, dim=-1).view(batch, -1)   
+        theta = torch.acos(xc) # Размерность: (batch, in_dim)
+        
+        T_list = [torch.cos(k * theta) for k in range(self.degree + 1)]
+        T_stack = torch.stack(T_list, dim=-1).view(batch, -1)   
+        
         y = F.linear(T_stack, self.coeffs)
-
         y = y * self._scale
 
         if self.residual:
@@ -60,11 +58,9 @@ class ScaledCPIKAN(nn.Module):
             self.layers.append(ChebyKANLayer(hidden, hidden, degree, residual=True))
 
         self.head = nn.Linear(hidden, out_dim)
-        nn.init.normal_(self.head.weight, std=0.01)
-        nn.init.zeros_(self.head.bias)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        h = 0.95 * x  
+        x = x * 0.95
         for layer in self.layers:
-            h = layer(h)
-        return self.head(h)
+            x = layer(x)
+        return self.head(x)

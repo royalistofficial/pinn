@@ -21,13 +21,16 @@ class WavKANLayer(nn.Module):
         nn.init.kaiming_uniform_(self.base_weight, a=math.sqrt(5))
         self.base_activation = nn.SiLU()
 
+        if self.residual:
+            self.res_scale = nn.Parameter(torch.zeros(1))
+
     def mexican_hat(self, x):
         return (1.0 - x ** 2) * torch.exp(-0.5 * x ** 2)
 
     def forward(self, x):
         x_u = x.unsqueeze(-1)
 
-        scale = self.scale.exp() + 1e-8
+        scale = F.softplus(self.scale) + 1e-4
         x_norm = (x_u - self.translation) / scale
 
         wav = self.mexican_hat(x_norm)
@@ -41,8 +44,9 @@ class WavKANLayer(nn.Module):
 
         y = y_wav + y_base
 
+        # [ИСПРАВЛЕНИЕ] Мягкое сложение с входом
         if self.residual:
-            y = y + x
+            y = y + self.res_scale * x
 
         return y
 
@@ -59,16 +63,12 @@ class WavKAN(nn.Module):
         self.layers = nn.ModuleList()
 
         self.layers.append(WavKANLayer(in_dim, hidden_dim, num_wavelets, residual=False))
-
         for _ in range(n_layers - 1):
             self.layers.append(WavKANLayer(hidden_dim, hidden_dim, num_wavelets, residual=True))
 
         self.head = nn.Linear(hidden_dim, out_dim)
-        nn.init.xavier_normal_(self.head.weight)
-        nn.init.zeros_(self.head.bias)
 
     def forward(self, x):
-        h = x
         for layer in self.layers:
-            h = layer(h)
-        return self.head(h)
+            x = layer(x)
+        return self.head(x)

@@ -120,7 +120,7 @@ class Trainer:
 
         self.pinn.train()
 
-        self._run_ntk_analysis(0)
+        # self._run_ntk_analysis(0)
         self.callback.plot_fields(0)
 
         if ADAM_EPOCHS > 0:
@@ -143,8 +143,8 @@ class Trainer:
                         ep, lr=self.lr, ema_loss=ema_loss, **loss_info
                     )
 
-                if ep % 100 == 0:
-                    self.callback.plot_fields(ep)
+                # if ep % 100 == 0:
+                #     self.callback.plot_fields(ep)
 
                 if ema_loss < best_ema - min_delta:
                     best_ema = ema_loss
@@ -152,8 +152,8 @@ class Trainer:
                 else:
                     patience_counter += 1
 
-                if ep % NTK_ANALYSIS_EVERY == 0:
-                    self._run_ntk_analysis(ep)
+                # if ep % NTK_ANALYSIS_EVERY == 0:
+                #     self._run_ntk_analysis(ep)
 
                 if patience_counter >= patience:
                     self.logger(
@@ -171,7 +171,7 @@ class Trainer:
             if ADAM_EPOCHS > 0 and loss_info is not None:
                 self.callback.on_epoch_end(ep, lr=self.lr, ema_loss=ema_loss, **loss_info)
                 self.callback.plot_fields(ep)
-                self._run_ntk_analysis(ep)
+                # self._run_ntk_analysis(ep)
 
             for _ in range(LBFGS_EPOCHS):
                 ep += 1
@@ -188,8 +188,8 @@ class Trainer:
                         ep, lr=self.lr, ema_loss=ema_loss, **loss_info
                     )
 
-                if ep % 100 == 0:
-                    self.callback.plot_fields(ep)
+                # if ep % 100 == 0:
+                #     self.callback.plot_fields(ep)
 
                 if ema_loss < best_ema - min_delta:
                     best_ema = ema_loss
@@ -197,8 +197,8 @@ class Trainer:
                 else:
                     patience_counter += 1
 
-                if ep % NTK_ANALYSIS_EVERY == 0:
-                    self._run_ntk_analysis(ep)
+                # if ep % NTK_ANALYSIS_EVERY == 0:
+                #     self._run_ntk_analysis(ep)
 
                 if patience_counter >= patience:
                     self.logger(
@@ -210,7 +210,7 @@ class Trainer:
         if loss_info is not None:
             self.callback.on_epoch_end(ep, lr=self.lr, ema_loss=ema_loss, **loss_info)
             self.callback.plot_fields(ep)
-            self._run_ntk_analysis(ep)
+            # self._run_ntk_analysis(ep)
         else:
             self.logger("[Warning] Обучение не выполнялось (0 эпох).")
 
@@ -408,5 +408,5 @@ class Trainer:
             )
 
     def _finalize(self) -> None:
-        self.ntk_analyzer.plot_evolution()
+        # self.ntk_analyzer.plot_evolution()
         self.logger("[Training] Completed successfully")

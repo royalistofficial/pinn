@@ -218,6 +218,7 @@ class PINNApp(ctk.CTk):
         
         preset = PRESET_CONFIGS[arch_name]
         
+        # Общие параметры для всех архитектур
         self.dynamic_net_vars["hidden_dim"] = self.add_entry(self.net_params_frame, "Скрытых нейронов (hidden_dim)", preset.hidden_dim)
         self.dynamic_net_vars["n_layers"] = self.add_entry(self.net_params_frame, "Количество слоев (n_layers)", preset.n_layers)
 
@@ -242,6 +243,12 @@ class PINNApp(ctk.CTk):
             self.dynamic_net_vars["trainable_freqs"] = t_freqs
 
         elif arch_name == "kan":
+            # Использует grid_size и spline_order согласно NetworkConfig
+            self.dynamic_net_vars["grid_size"] = self.add_entry(self.net_params_frame, "Размер сетки (grid_size)", preset.grid_size)
+            self.dynamic_net_vars["spline_order"] = self.add_entry(self.net_params_frame, "Порядок сплайна (spline_order)", preset.spline_order)
+            
+        elif arch_name == "cheby_kan":
+            # Добавлена новая архитектура ChebyKAN
             self.dynamic_net_vars["kan_degree"] = self.add_entry(self.net_params_frame, "Степень полинома (kan_degree)", preset.kan_degree)
 
         elif arch_name == "pi-dbsn":

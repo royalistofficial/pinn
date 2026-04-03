@@ -26,33 +26,33 @@ class BSplineKANLayer(nn.Module):
 
         init_val = math.log(math.exp(step) - 1.0)
         self.grid_steps_log = nn.Parameter(torch.ones(in_dim, n_knots - 1) * init_val)
-        self.grid_start = nn.Parameter(torch.ones(in_dim, 1) * (-1.0 - step * spline_order))
-
+        self.grid_start = nn.Parameter(torch.ones(in_dim, 1) * (-1.0 - spline_order * step))
+        
         if self.residual:
             self.res_scale = nn.Parameter(torch.zeros(1))
 
     def get_grid(self):
         steps = F.softplus(self.grid_steps_log)
-        grid_offsets = torch.cumsum(steps, dim=1)
-        return torch.cat([self.grid_start, self.grid_start + grid_offsets], dim=1)
+        grid = torch.cat([self.grid_start, steps], dim=-1)
+        grid = torch.cumsum(grid, dim=-1)
+        return grid
 
-    def b_spline(self, x, grid):
-        x = x.unsqueeze(-1) 
+    def b_spline(self, x: torch.Tensor, grid: torch.Tensor) -> torch.Tensor:
+        x_u = x.unsqueeze(-1)
+        grid_exp = grid.unsqueeze(0)
+
+        bases = ((x_u >= grid_exp[:, :, :-1]) & (x_u < grid_exp[:, :, 1:])).to(x.dtype)
         
-        bases = ((x >= grid[:, :-1]) & (x < grid[:, 1:])).to(x.dtype)
         eps = 1e-8
+        
+        for d in range(1, self.spline_order + 1):
+            left_num = x_u - grid_exp[:, :, :-(d + 1)]
+            left_den = grid_exp[:, :, d:-1] - grid_exp[:, :, :-(d + 1)] + eps
+            left = left_num / left_den
 
-        diffs = x - grid.unsqueeze(0)
-
-        for k in range(self.spline_order):
-            left_den  = grid[:, k + 1 : -1] - grid[:, : -(k + 2)]
-            right_den = grid[:, k + 2 : ]   - grid[:, 1 : -(k + 1)]
-
-            left_num  = diffs[:, :, :-(2 + k)]
-            right_num = -diffs[:, :, 2 + k:] 
-
-            left  = left_num / (left_den + eps)
-            right = right_num / (right_den + eps)
+            right_num = grid_exp[:, :, d + 1:] - x_u
+            right_den = grid_exp[:, :, d + 1:] - grid_exp[:, :, 1:-d] + eps
+            right = right_num / right_den
 
             bases = left * bases[:, :, :-1] + right * bases[:, :, 1:]
 
@@ -87,15 +87,15 @@ class BSplineKAN(nn.Module):
         grid_size = getattr(config, 'kan_grid_size', 5)
         spline_order = getattr(config, 'kan_spline_order', 3)
 
-        layers = [BSplineKANLayer(in_dim, hidden, grid_size, spline_order, residual=False)]
+        self.layers = nn.ModuleList()
+        self.layers.append(BSplineKANLayer(in_dim, hidden, grid_size, spline_order, residual=False))
+        
         for _ in range(n_layers - 1):
-            layers.append(BSplineKANLayer(hidden, hidden, grid_size, spline_order, residual=True))
-            
-        self.layers = nn.Sequential(*layers)
+            self.layers.append(BSplineKANLayer(hidden, hidden, grid_size, spline_order, residual=True))
 
         self.head = nn.Linear(hidden, out_dim)
-        nn.init.normal_(self.head.weight, std=0.01)
-        nn.init.zeros_(self.head.bias)
 
     def forward(self, x):
-        return self.head(self.layers(x))
+        for layer in self.layers:
+            x = layer(x)
+        return self.head(x)
