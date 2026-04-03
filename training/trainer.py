@@ -61,7 +61,7 @@ class Trainer:
         )
 
         self.lr = ADAM_LR
-        
+
         self.weight_balancer = WeightBalancer(WeightConfig(
             enabled=AUTO_BALANCE_ENABLED,
         ))
@@ -263,7 +263,7 @@ class Trainer:
 
         def closure():
             self.opt_lbfgs.zero_grad(set_to_none=True)
-            
+
             update_w = AUTO_BALANCE_ENABLED and (epoch == 1 or epoch % 10 == 0) and (closure_calls["count"] == 0)
             closure_calls["count"] += 1
 
@@ -288,14 +288,14 @@ class Trainer:
         }
 
     def ntk_trace(self, x: torch.Tensor, mode: str = "pde", normals: torch.Tensor | None = None) -> float:
-        
+
         if x.shape[0] == 0:
             return 0.0
-            
+
         n_points = min(x.shape[0], NTK_ANALYSIS_POINTS)
         idx = torch.linspace(0, x.shape[0] - 1, n_points, device=x.device).long()
         x_sub = x[idx]
-        
+
         if mode == "pde":
             J = compute_pde_jacobian(self.pinn, x_sub)
         elif mode == "dirichlet":
@@ -305,9 +305,9 @@ class Trainer:
             J = compute_bc_jacobian(self.pinn, x_sub, normals=normals_sub, bc_type="neumann")
         else:
             return 0.0
-            
+
         K = compute_ntk_from_jacobian(J)
-        
+
         return (torch.trace(K) / K.shape[0]).item()
 
     def _compute_loss(
@@ -344,12 +344,12 @@ class Trainer:
         if update_weights:
             mask_dir_bool = (bc_mask > 0.5).squeeze(-1)
             mask_neu_bool = (bc_mask <= 0.5).squeeze(-1)
-            
+
             trace_pde = self.ntk_trace(xq, mode="pde")
-            
+
             xb_dir = xb[mask_dir_bool]
             trace_dir = self.ntk_trace(xb_dir, mode="dirichlet") if len(xb_dir) > 0 else 0.0
-            
+
             trace_neu = 0.0
             if self.has_neumann:
                 xb_neu = xb[mask_neu_bool]

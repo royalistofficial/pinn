@@ -24,7 +24,9 @@ class BSplineLayer(nn.Module):
         step = 2.0 / grid_size
         n_knots = grid_size + 2 * spline_order + 1
 
-        self.grid_steps_log = nn.Parameter(torch.log(torch.ones(in_dim, n_knots - 1) * step))
+        # ИСПРАВЛЕНИЕ 1: Правильная инициализация шагов (обратная функция к softplus)
+        init_val = math.log(math.exp(step) - 1.0)
+        self.grid_steps_log = nn.Parameter(torch.ones(in_dim, n_knots - 1) * init_val)
         self.grid_start = nn.Parameter(torch.ones(in_dim, 1) * (-1.0 - step * spline_order))
 
         if self.residual:
@@ -43,13 +45,12 @@ class BSplineLayer(nn.Module):
 
         bases = ((x >= left) & (x < right)).to(x.dtype)
 
-        denom = grid[:, 1:] - grid[:, :-1]
-
+        # ИСПРАВЛЕНИЕ 2: Исправленный алгоритм Кокса-де Бура (динамические знаменатели)
         for k in range(self.spline_order):
-            left_den = denom[:, :-1 - k]
-            right_den = denom[:, 1 + k:]
+            left_den  = grid[:, k + 1 : -1] - grid[:, : -(k + 2)]
+            right_den = grid[:, k + 2 : ]   - grid[:, 1 : -(k + 1)]
 
-            left_num = x - grid[:, :-(2 + k)]
+            left_num  = x - grid[:, :-(2 + k)]
             right_num = grid[:, 2 + k:] - x
 
             left = left_num / (left_den + eps)

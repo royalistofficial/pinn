@@ -1,6 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, Tuple, Optional
+from config import BC_PENALTY
 import numpy as np
 
 @dataclass
@@ -9,11 +10,11 @@ class WeightConfig:
     update_every: int = 100
     momentum: float = 0.95
     min_weight = 1e-2
-    max_weight = 1e+3
+    max_weight = 1e+9
 
     w_pde_init: float = 1.0
-    w_dirichlet_init: float = 1.0
-    w_neumann_init: float = 1.0
+    w_dirichlet_init: float = BC_PENALTY
+    w_neumann_init: float = BC_PENALTY
 
 class WeightBalancer:
     def __init__(self, config: Optional[WeightConfig] = None):
@@ -23,18 +24,18 @@ class WeightBalancer:
     def reset(self) -> None:
 
         self.w_pde = 1.0
-        self.w_dirichlet = 1.0 
-        self.w_neumann = 1.0
+        self.w_dirichlet = BC_PENALTY
+        self.w_neumann = BC_PENALTY
 
         self._trace_history: Dict[str, list] = {"pde": [], "dir": [], "neu": []}
-        self._smooth_norm: Dict[str, float] = {"pde": 1.0, "dir": 1.0, "neu": 1.0}
+        self._smooth_norm: Dict[str, float] = {"pde": 1.0, "dir": BC_PENALTY, "neu": BC_PENALTY}
 
     def update_from_gradients(
                 self,
                 grad_pde_norm: float,
                 grad_dir_norm: float,
                 grad_neu_norm: float = 0.0,
-                bc_penalty: float = 1.0 
+                bc_penalty: float = BC_PENALTY
             ) -> Tuple[float, float, float]:
 
         if not self.config.enabled:

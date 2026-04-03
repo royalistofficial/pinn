@@ -18,6 +18,9 @@ import training.trainer as trainer_mod
 from file_io.logger import FileLogger
 from visualization.mesh_plots import plot_mesh
 
+# ИМПОРТ НОВОГО МОДУЛЯ ДЛЯ СРАВНЕНИЯ С МКЭ
+from fem.comparison import compare_pinn_and_fem
+
 # Настройка темы
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -165,7 +168,8 @@ class PINNApp(ctk.CTk):
         self.tabview = ctk.CTkTabview(self.main_frame)
         self.tabview.pack(fill="both", expand=True)
 
-        self.tabs = ["Сетка", "Метрики", "Поля", "NTK", "Галерея"]
+        # ДОБАВЛЕНА ВКЛАДКА "Сравнение"
+        self.tabs = ["Сетка", "Метрики", "Поля", "NTK", "Сравнение", "Галерея"]
         self.canvases = {}
 
         for tab_name in self.tabs:
@@ -361,6 +365,7 @@ class PINNApp(ctk.CTk):
             for f in glob.glob(os.path.join(out_dir, f"{domain_name}_fields_*.png")):
                 os.remove(f)
 
+            # --- ОБУЧЕНИЕ PINN ---
             with FileLogger(log_path, also_print=True) as logger:
                 trainer = Trainer(
                     domain=domain, 
@@ -372,8 +377,24 @@ class PINNApp(ctk.CTk):
                 )
                 trainer.train(patience=patience_val)
 
+            # --- АВТОМАТИЧЕСКОЕ СРАВНЕНИЕ С МКЭ ПОСЛЕ ОБУЧЕНИЯ ---
+            self.after(0, lambda: self.status_label.configure(text="Статус: Выполнение МКЭ и сравнение...", text_color="#3B82F6"))
+            
+            weights_path = os.path.join(out_dir, f"{domain_name}_best_pinn.pth")
+            if not os.path.exists(weights_path):
+                weights_path = None
+                
+            plot_path = compare_pinn_and_fem(
+                domain_name=domain_name,
+                solution_name=solution_name,
+                pinn_weights_path=weights_path,
+                net_config=net_config
+            )
+
+            # --- ОБНОВЛЕНИЕ ИНТЕРФЕЙСА (ГРАФИКОВ) ---
             self.after(0, self.update_image, "Метрики", os.path.join(out_dir, f"{domain_name}_metrics.png"))
             self.after(0, self.update_image, "NTK", os.path.join(out_dir, "ntk_evolution_dashboard.png"))
+            self.after(0, self.update_image, "Сравнение", plot_path)
             
             field_imgs = sorted(glob.glob(os.path.join(out_dir, f"{domain_name}_fields_*.png")))
             if field_imgs:
@@ -396,6 +417,7 @@ class PINNApp(ctk.CTk):
         self.refresh_gallery_list()
         if success:
             self.status_label.configure(text="Статус: Завершено (Успех)", text_color="#10B981")
+            self.tabview.set("Сравнение") # Автоматически переключаем на новую вкладку
         else:
             self.status_label.configure(text="Статус: Произошла ошибка", text_color="#EF4444")
 

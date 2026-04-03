@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 
 from networks.configs import NetworkConfig
 from networks.architectures import (
-    ScaledCPIKAN,
+    BSplineKAN,
     PIDBSN,
     RBFKAN,
     WavKAN,
@@ -21,7 +21,7 @@ from networks.architectures import (
 
 class PINNFactory:
     _registry: Dict[str, Type[nn.Module]] = {
-        "kan": ScaledCPIKAN,
+        "kan": BSplineKAN,
         "mlp": MLP,
         "siren": SIREN,
         "fourier": FourierNet,
