@@ -8,16 +8,13 @@ import torch.nn as nn
 from config import (
     DEVICE, ADAM_LR, ADAM_EPOCHS, LBFGS_EPOCHS, LBFGS_LR, 
     LBFGS_MAX_ITER, LBFGS_TOLERANCE_GRAD, LBFGS_TOLERANCE_CHANGE,
-    BC_PENALTY, OUTPUT_DIR, NTK_ANALYSIS_EVERY, NTK_ANALYSIS_POINTS, 
-    AUTO_BALANCE_ENABLED, AUTO_BALANCE_MIN_WEIGHT, AUTO_BALANCE_MAX_WEIGHT
+    BC_PENALTY, OUTPUT_DIR, AUTO_BALANCE_ENABLED
 )
 
 from networks.configs import NetworkConfig
 from networks.pinn import PINN
 
 from training.data_module import DataModule, prepare_sample
-from ntk.ntk_analyzer import NTKAnalyzer
-from ntk.compute import compute_pde_jacobian, compute_bc_jacobian, compute_ntk_from_jacobian
 from training.weight_balancer import WeightBalancer, WeightConfig
 
 from evaluation.metrics import MetricsCalculator
@@ -65,13 +62,6 @@ class Trainer:
             enabled=AUTO_BALANCE_ENABLED,
         ))
 
-        self.ntk_analyzer = NTKAnalyzer(
-            model=self.pinn,
-            output_dir=OUTPUT_DIR,
-            n_interior=NTK_ANALYSIS_POINTS,
-            n_boundary=NTK_ANALYSIS_POINTS // 2,
-            logger=logger,
-        )
 
         self.metrics_calculator = MetricsCalculator(solution)
 
@@ -87,19 +77,6 @@ class Trainer:
             ntk_analyzer=self.ntk_analyzer,
             eval_quad=eval_quad,
         )
-
-    def _compute_domain_diameter(self, domain) -> float:
-        try:
-            if hasattr(domain, 'vertices'):
-                verts = domain.vertices
-                from scipy.spatial.distance import pdist
-                return float(np.max(pdist(verts)))
-            elif hasattr(domain, 'Lx') and hasattr(domain, 'Ly'):
-                return float(np.sqrt(domain.Lx**2 + domain.Ly**2))
-            else:
-                return 1.0
-        except Exception:
-            return 1.0
 
     def train(self, patience: int = 50) -> None:
         self.logger.section(
@@ -119,7 +96,6 @@ class Trainer:
 
         self.pinn.train()
 
-        # self._run_ntk_analysis(0)
         self.callback.plot_fields(0)
 
         if ADAM_EPOCHS > 0:
@@ -142,17 +118,11 @@ class Trainer:
                         ep, lr=self.lr, ema_loss=ema_loss, **loss_info
                     )
 
-                # if ep % 100 == 0:
-                #     self.callback.plot_fields(ep)
-
                 if ema_loss < best_ema - min_delta:
                     best_ema = ema_loss
                     patience_counter = 0
                 else:
                     patience_counter += 1
-
-                # if ep % NTK_ANALYSIS_EVERY == 0:
-                #     self._run_ntk_analysis(ep)
 
                 if patience_counter >= patience:
                     self.logger(
@@ -170,7 +140,6 @@ class Trainer:
             if ADAM_EPOCHS > 0 and loss_info is not None:
                 self.callback.on_epoch_end(ep, lr=self.lr, ema_loss=ema_loss, **loss_info)
                 self.callback.plot_fields(ep)
-                # self._run_ntk_analysis(ep)
 
             for _ in range(LBFGS_EPOCHS):
                 ep += 1
@@ -187,17 +156,12 @@ class Trainer:
                         ep, lr=self.lr, ema_loss=ema_loss, **loss_info
                     )
 
-                # if ep % 100 == 0:
-                #     self.callback.plot_fields(ep)
 
                 if ema_loss < best_ema - min_delta:
                     best_ema = ema_loss
                     patience_counter = 0
                 else:
                     patience_counter += 1
-
-                # if ep % NTK_ANALYSIS_EVERY == 0:
-                #     self._run_ntk_analysis(ep)
 
                 if patience_counter >= patience:
                     self.logger(
@@ -209,7 +173,6 @@ class Trainer:
         if loss_info is not None:
             self.callback.on_epoch_end(ep, lr=self.lr, ema_loss=ema_loss, **loss_info)
             self.callback.plot_fields(ep)
-            # self._run_ntk_analysis(ep)
         else:
             self.logger("[Warning] Обучение не выполнялось (0 эпох).")
 
@@ -286,29 +249,6 @@ class Trainer:
             "neu_loss": loss_dict_tracker.get("neumann", 0.0),
         }
 
-    def ntk_trace(self, x: torch.Tensor, mode: str = "pde", normals: torch.Tensor | None = None) -> float:
-
-        if x.shape[0] == 0:
-            return 0.0
-
-        n_points = min(x.shape[0], NTK_ANALYSIS_POINTS)
-        idx = torch.linspace(0, x.shape[0] - 1, n_points, device=x.device).long()
-        x_sub = x[idx]
-
-        if mode == "pde":
-            J = compute_pde_jacobian(self.pinn, x_sub)
-        elif mode == "dirichlet":
-            J = compute_bc_jacobian(self.pinn, x_sub, bc_type="dirichlet")
-        elif mode == "neumann":
-            normals_sub = normals[idx] if normals is not None else None
-            J = compute_bc_jacobian(self.pinn, x_sub, normals=normals_sub, bc_type="neumann")
-        else:
-            return 0.0
-
-        K = compute_ntk_from_jacobian(J)
-
-        return (torch.trace(K) / K.shape[0]).item()
-
     def _compute_loss(
                 self,
                 xq: torch.Tensor,
@@ -341,22 +281,16 @@ class Trainer:
             loss_neu = (diff_N ** 2 * neu_mask).sum() / (neu_mask.sum() + 1e-8)
 
         if update_weights:
-            mask_dir_bool = (bc_mask > 0.5).squeeze(-1)
-            mask_neu_bool = (bc_mask <= 0.5).squeeze(-1)
+            gradients_pde = loss_pde.detach()
 
-            trace_pde = self.ntk_trace(xq, mode="pde")
-
-            xb_dir = xb[mask_dir_bool]
-            trace_dir = self.ntk_trace(xb_dir, mode="dirichlet") if len(xb_dir) > 0 else 0.0
+            gradients_dir = loss_dir.detach()
 
             trace_neu = 0.0
             if self.has_neumann:
-                xb_neu = xb[mask_neu_bool]
-                normals_neu = normals[mask_neu_bool]
-                trace_neu = self.ntk_trace(xb_neu, mode="neumann", normals=normals_neu) if len(xb_neu) > 0 else 0.0
+                gradients_neu = loss_neu.detach()
 
             self.weight_balancer.update_from_gradients(
-                trace_pde, trace_dir, trace_neu, bc_penalty=BC_PENALTY
+                gradients_pde, gradients_dir, gradients_neu, bc_penalty=BC_PENALTY
             )
             self.pinn.zero_grad() 
 
@@ -383,29 +317,5 @@ class Trainer:
         torch.save(self.pinn.state_dict(), save_path)
         self.logger(f"[Model Saved]")
 
-    def _run_ntk_analysis(self, epoch: int) -> None:
-        quad = self.data.sample.quad
-        weights = self.weight_balancer.get_weights()
-
-        result = self.ntk_analyzer.analyze(
-            epoch=epoch,
-            X_interior=quad.xy_in,
-            X_boundary=quad.xy_bd,
-            normals=quad.normals,
-            bc_mask=quad.bc_mask,
-            w_pde=weights['pde'],
-            w_dirichlet=weights['dirichlet'],
-            w_neumann=weights['neumann'] 
-        )
-
-        if AUTO_BALANCE_ENABLED:
-            self.logger(
-                f"[Weight-Info] Current adaptive weights: "
-                f"w_pde={weights['pde']:.3f}, "
-                f"w_dir={weights['dirichlet']:.3f}, "
-                f"w_neu={weights['neumann']:.3f}"
-            )
-
     def _finalize(self) -> None:
-        # self.ntk_analyzer.plot_evolution()
         self.logger("[Training] Completed successfully")
