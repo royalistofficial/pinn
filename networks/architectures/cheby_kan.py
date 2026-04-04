@@ -35,9 +35,9 @@ class ScaledCPIKAN(nn.Module):
 
         in_dim = getattr(config, 'in_dim', 2)
         out_dim = getattr(config, 'out_dim', 1)
-        hidden = getattr(config, 'hidden_dim', 12)
-        n_layers = getattr(config, 'n_layers', 2)
-        degree = getattr(config, 'kan_degree', 5)
+        hidden = getattr(config, 'hidden_dim', 25)
+        n_layers = getattr(config, 'n_layers', 3)
+        degree = getattr(config, 'kan_degree', 10)
 
         self.layers = nn.ModuleList()
         self.layers.append(ChebyKANLayer(in_dim, hidden, degree))

@@ -70,10 +70,10 @@ def plot_training_metrics(history: Dict, domain: str, path: str, ep_adam: None |
         return
 
     epochs = history["epoch"]
-    fig, axes = plt.subplots(2, 2, figsize=(16, 11))
+    fig, axes = plt.subplots(3, 1, figsize=(16, 11))
     fig.patch.set_facecolor("white")
 
-    ax = axes[0, 0]
+    ax = axes[0]
     loss = history.get("loss", [])
     pde = history.get("pde", [])
     ax.semilogy(epochs, loss, color=COLORS["loss"], lw=2, label="Общие потери")
@@ -81,7 +81,7 @@ def plot_training_metrics(history: Dict, domain: str, path: str, ep_adam: None |
     _ax_style(ax, "Функция потерь", ylabel="Потери")
     ax.legend(fontsize=8)
 
-    ax = axes[0, 1]
+    ax = axes[2]
     energy = history.get("rel_energy", [])
     if energy:
         ax.semilogy(epochs, energy, color=COLORS["energy_rel"], lw=2.2, label="Отн. энергетическая ошибка")
@@ -91,7 +91,7 @@ def plot_training_metrics(history: Dict, domain: str, path: str, ep_adam: None |
     _ax_style(ax, r"Относительная энергетическая ошибка $\|\nabla(u-v)\|^2$", ylabel="Ошибка")
     ax.legend(fontsize=8)
 
-    ax = axes[1, 0]
+    ax = axes[1]
     rel = history.get("rel_err", [])
     if rel:
         ax.semilogy(epochs, rel, color=COLORS["rel_l2"], lw=2.2, label=r"Относительная ошибка $L_2$")
@@ -100,41 +100,41 @@ def plot_training_metrics(history: Dict, domain: str, path: str, ep_adam: None |
     _ax_style(ax, r"Относительная ошибка $L_2$", ylabel="Ошибка")
     ax.legend(fontsize=8)
 
-    ax = axes[1, 1]
-    w_pde = history.get("w_pde", [])
-    w_dirichlet = history.get("w_dirichlet", [])
-    w_neumann = history.get("w_neumann", [])
+    # ax = axes[1, 1]
+    # w_pde = history.get("w_pde", [])
+    # w_dirichlet = history.get("w_dirichlet", [])
+    # w_neumann = history.get("w_neumann", [])
 
-    if w_pde:
-        ax.plot(epochs, w_pde, color=COLORS["w_pde"], lw=2, label=r"$w_{ДУЧП}$", marker="o", 
-                markersize=3, markevery=max(1, len(epochs)//20))
-        _annotate_last(ax, epochs, w_pde, COLORS["w_pde"], fmt=".2f", dy=8)
-    if w_dirichlet:
-        ax.plot(epochs, w_dirichlet, color=COLORS["w_dirichlet"], lw=2, label=r"$w_{Дирихле}$", 
-                marker="s", markersize=3, markevery=max(1, len(epochs)//20))
-        _annotate_last(ax, epochs, w_dirichlet, COLORS["w_dirichlet"], fmt=".2f", dy=-8)
-    if w_neumann:
-        ax.plot(epochs, w_neumann, color=COLORS["w_neumann"], lw=2, label=r"$w_{Нейман}$", 
-                marker="^", markersize=3, markevery=max(1, len(epochs)//20))
-        _annotate_last(ax, epochs, w_neumann, COLORS["w_neumann"], fmt=".2f", dy=8)
+    # if w_pde:
+    #     ax.plot(epochs, w_pde, color=COLORS["w_pde"], lw=2, label=r"$w_{ДУЧП}$", marker="o", 
+    #             markersize=3, markevery=max(1, len(epochs)//20))
+    #     _annotate_last(ax, epochs, w_pde, COLORS["w_pde"], fmt=".2f", dy=8)
+    # if w_dirichlet:
+    #     ax.plot(epochs, w_dirichlet, color=COLORS["w_dirichlet"], lw=2, label=r"$w_{Дирихле}$", 
+    #             marker="s", markersize=3, markevery=max(1, len(epochs)//20))
+    #     _annotate_last(ax, epochs, w_dirichlet, COLORS["w_dirichlet"], fmt=".2f", dy=-8)
+    # if w_neumann:
+    #     ax.plot(epochs, w_neumann, color=COLORS["w_neumann"], lw=2, label=r"$w_{Нейман}$", 
+    #             marker="^", markersize=3, markevery=max(1, len(epochs)//20))
+    #     _annotate_last(ax, epochs, w_neumann, COLORS["w_neumann"], fmt=".2f", dy=8)
 
-    if w_pde or w_dirichlet or w_neumann:
-        ax.set_ylim(bottom=0, top=max(
-            max(w_pde) if w_pde else 1,
-            max(w_dirichlet) if w_dirichlet else 1,
-            max(w_neumann) if w_neumann else 1
-        ) * 1.2)
+    # if w_pde or w_dirichlet or w_neumann:
+    #     ax.set_ylim(bottom=0, top=max(
+    #         max(w_pde) if w_pde else 1,
+    #         max(w_dirichlet) if w_dirichlet else 1,
+    #         max(w_neumann) if w_neumann else 1
+    #     ) * 1.2)
 
-    _ax_style(ax, "Вклады весов функции потерь", ylabel="Вес")
-    ax.legend(fontsize=8)
+    # _ax_style(ax, "Вклады весов функции потерь", ylabel="Вес")
+    # ax.legend(fontsize=8)
 
-    if w_pde and w_dirichlet:
-        weights_text = f"Текущие: ДУЧП={w_pde[-1]:.2f}, Дир={w_dirichlet[-1]:.2f}"
-        if w_neumann:
-            weights_text += f", Нейм={w_neumann[-1]:.2f}"
-        ax.text(0.02, 0.98, weights_text, transform=ax.transAxes, fontsize=8,
-                verticalalignment='top', color=COLORS["text"],
-                bbox=dict(boxstyle='round', facecolor=COLORS["bg"], alpha=0.8))
+    # if w_pde and w_dirichlet:
+    #     weights_text = f"Текущие: ДУЧП={w_pde[-1]:.2f}, Дир={w_dirichlet[-1]:.2f}"
+    #     if w_neumann:
+    #         weights_text += f", Нейм={w_neumann[-1]:.2f}"
+    #     ax.text(0.02, 0.98, weights_text, transform=ax.transAxes, fontsize=8,
+    #             verticalalignment='top', color=COLORS["text"],
+    #             bbox=dict(boxstyle='round', facecolor=COLORS["bg"], alpha=0.8))
 
     fig.suptitle(
         f"Метрики обучения PINN ({domain})",

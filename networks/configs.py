@@ -74,7 +74,7 @@ class NetworkConfig:
         )
 
     @classmethod
-    def kan(cls, hidden_dim: int = 25, n_layers: int = 2,
+    def kan(cls, hidden_dim: int = 32, n_layers: int = 3,
             grid_size: int = 5, spline_order: int = 3, **kwargs) -> "NetworkConfig":
         return cls(
             architecture="kan",
@@ -86,13 +86,24 @@ class NetworkConfig:
         )
 
     @classmethod
-    def cheby_kan(cls, hidden_dim: int = 12, n_layers: int = 2,
+    def cheby_kan(cls, hidden_dim: int = 32, n_layers: int = 3,
             kan_degree: int = 5, **kwargs) -> "NetworkConfig":
         return cls(
             architecture="cheby_kan",
             hidden_dim=hidden_dim,
             n_layers=n_layers,
             kan_degree=kan_degree,
+            **kwargs
+        )
+    
+    @classmethod
+    def wav_kan(cls, hidden_dim: int = 32, n_layers: int = 3,
+                num_wavelets: int = 5, **kwargs) -> "NetworkConfig":
+        return cls(
+            architecture="wav-kan",
+            hidden_dim=hidden_dim,
+            n_layers=n_layers,
+            num_wavelets=num_wavelets,
             **kwargs
         )
 
@@ -116,17 +127,6 @@ class NetworkConfig:
             hidden_dim=hidden_dim,
             n_layers=n_layers,
             num_rbf_centers=num_centers,
-            **kwargs
-        )
-
-    @classmethod
-    def wav_kan(cls, hidden_dim: int = 8, n_layers: int = 2,
-                num_wavelets: int = 5, **kwargs) -> "NetworkConfig":
-        return cls(
-            architecture="wav-kan",
-            hidden_dim=hidden_dim,
-            n_layers=n_layers,
-            num_wavelets=num_wavelets,
             **kwargs
         )
 

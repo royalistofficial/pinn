@@ -30,7 +30,6 @@ class Trainer:
                 quad,
                 solution,
                 logger,
-                batch_size: int = 4096,
                 config: NetworkConfig | dict | None = None,
                 eval_quad = None, 
             ):
@@ -40,7 +39,7 @@ class Trainer:
         self.domain = domain
 
         sample = prepare_sample(quad, solution)
-        self.data = DataModule(sample, batch_size=min(batch_size, len(quad.xy_in)))
+        self.data = DataModule(sample, batch_size=len(quad.xy_in))
 
         if config is None:
             from networks.configs import DEFAULT_CONFIG

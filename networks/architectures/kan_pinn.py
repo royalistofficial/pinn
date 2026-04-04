@@ -86,10 +86,10 @@ class BSplineKAN(nn.Module):
 
         in_dim = getattr(config, 'in_dim', 2)
         out_dim = getattr(config, 'out_dim', 1)
-        hidden_dim = getattr(config, 'hidden_dim', 25)
-        n_layers = getattr(config, 'n_layers', 2)
+        hidden_dim = getattr(config, 'hidden_dim', 15)
+        n_layers = getattr(config, 'n_layers', 3)
 
-        grid_size = getattr(config, 'kan_grid_size', 5)
+        grid_size = getattr(config, 'kan_grid_size', 10)
         spline_order = getattr(config, 'kan_spline_order', 3)
 
         self.layers = nn.ModuleList()

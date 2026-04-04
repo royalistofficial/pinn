@@ -43,9 +43,9 @@ class WavKAN(nn.Module):
 
         in_dim = getattr(config, 'in_dim', 2)
         out_dim = getattr(config, 'out_dim', 1)
-        hidden_dim = getattr(config, 'hidden_dim', 8)
-        n_layers = getattr(config, 'n_layers', 2)
-        num_wavelets = getattr(config, 'num_wavelets', 5)
+        hidden_dim = getattr(config, 'hidden_dim', 15)
+        n_layers = getattr(config, 'n_layers', 3)
+        num_wavelets = getattr(config, 'num_wavelets', 10)
 
         self.layers = nn.ModuleList()
 
